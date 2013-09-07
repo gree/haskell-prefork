@@ -8,7 +8,7 @@ data ServerOption = ServerOption1 deriving (Show, Read)
 
 main :: IO ()
 main = do
-  defaultMain readConfig 
+  defaultMain readConfig $ \so -> return ()
 
 readConfig :: IO (ServerOption, String)
 readConfig = do

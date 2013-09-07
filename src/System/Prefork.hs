@@ -13,6 +13,9 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
 import System.Posix hiding (version)
+import System.Environment (getArgs)
+
+import System.Prefork.Worker
 
 data ControlMessage = 
     TerminateCM
@@ -33,13 +36,18 @@ data (Show so, Read so) => Prefork so = Prefork {
   }
 
 
-defaultMain :: (Show so, Read so) => IO (so, String) -> IO ()
-defaultMain readConfigFn = do
-  ctrlChan <- newTChanIO
-  procs <- newTVarIO M.empty
-  (sopt, _) <- readConfigFn
-  soptVar <- newTVarIO sopt
-  masterMainLoop (Prefork soptVar readConfigFn ctrlChan procs) False
+defaultMain :: (Show so, Read so) => IO (so, String) -> (so -> IO ()) -> IO ()
+defaultMain readConfigFn workerAction = do
+  args <- getArgs
+  case args of 
+    x:_ | x == "server" -> do
+      workerMain workerAction
+    _ -> do
+      ctrlChan <- newTChanIO
+      procs <- newTVarIO M.empty
+      (sopt, _) <- readConfigFn
+      soptVar <- newTVarIO sopt
+      masterMainLoop (Prefork soptVar readConfigFn ctrlChan procs) False
 
 masterMainLoop :: (Show so, Read so) => Prefork so -> Bool -> IO ()
 masterMainLoop prefork finishing = do
