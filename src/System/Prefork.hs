@@ -1,7 +1,7 @@
 
 {- | This is a library for servers based on worker process model.
 -}
-module System.Prefork(Prefork(..), defaultMain) where
+module System.Prefork(defaultMain) where
 
 import Prelude hiding (catch)
 import Data.List
@@ -25,21 +25,23 @@ data ControlMessage =
 type ControlTChan   = TChan ControlMessage
 type ProcessMapTVar = TVar (Map ProcessID String)
 
-data (Show sopt, Read sopt) => Prefork sopt = Prefork {
-    pServerOption :: !(TVar sopt)
-  , pReadConfigFn :: IO (sopt, String)
+data (Show so, Read so) => Prefork so = Prefork {
+    pServerOption :: !(TVar so)
+  , pReadConfigFn :: IO (so, String)
   , pCtrlChan     :: !ControlTChan
   , pProcs        :: !ProcessMapTVar
   }
 
-defaultMain :: (Show a, Read a) => a -> IO (a, String) -> IO ()
-defaultMain sopt readConfigFn = do
+
+defaultMain :: (Show so, Read so) => IO (so, String) -> IO ()
+defaultMain readConfigFn = do
   ctrlChan <- newTChanIO
   procs <- newTVarIO M.empty
+  (sopt, _) <- readConfigFn
   soptVar <- newTVarIO sopt
   masterMainLoop (Prefork soptVar readConfigFn ctrlChan procs) False
 
-masterMainLoop :: (Show a, Read a) => Prefork a -> Bool -> IO ()
+masterMainLoop :: (Show so, Read so) => Prefork so -> Bool -> IO ()
 masterMainLoop prefork finishing = do
   setHandler sigCHLD $ childHandler (pCtrlChan prefork)
   loop False
@@ -69,9 +71,6 @@ masterMainLoop prefork finishing = do
       ChildCM -> do
         cleanupChildren opt cids (pProcs prefork)
         return (False)
-
-
----------------------------------------------------------------- PRIVATE
 
 cleanupChildren opt cids procs = do
   r <- mapM (getProcessStatus False False) cids
