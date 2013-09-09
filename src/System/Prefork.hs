@@ -7,10 +7,7 @@ module System.Prefork(
     PreforkSettings(..)
   , defaultMain
   , compatMain
-  , defaultTerminateHandler
-  , defaultInterruptHandler
-  , defaultHungupHandler
-  , defaultChildHandler
+  , defaultSettings
                      ) where
 
 import Prelude hiding (catch)
@@ -24,6 +21,7 @@ import Control.Concurrent.STM
 import Control.Exception
 import System.Posix hiding (version)
 import System.Environment (getArgs, lookupEnv)
+-- import Data.Default (Default, def)
 
 import System.Prefork.Worker
 
@@ -39,18 +37,18 @@ type ControlTChan   = TChan ControlMessage
 type ProcessMapTVar = TVar (Map ProcessID String)
 
 data (Show so, Read so) => Prefork so = Prefork {
-    pServerOption :: !(TVar so)
+    pServerOption :: !(TVar (Maybe so))
   , pCtrlChan     :: !ControlTChan
   , pProcs        :: !ProcessMapTVar
   , pSettings     :: PreforkSettings so
   }
 
 data (Show so, Read so) => PreforkSettings so = PreforkSettings {
-    psTerminateHandler :: [ProcessID] -> so -> IO ()
-  , psInterruptHandler :: [ProcessID] -> so -> IO ()
-  , psHungupHandler    :: [ProcessID] -> so -> IO ()
-  , psChildHandler     :: [ProcessID] -> so -> IO ()
-  , psUpdateConfigFn   :: IO (so, String)
+    psTerminateHandler    :: [ProcessID] -> so -> IO ()
+  , psInterruptHandler    :: [ProcessID] -> so -> IO ()
+  , psHungupHandler       :: [ProcessID] -> so -> IO ()
+  , psCleanupChild        :: ProcessID -> so -> IO ()
+  , psUpdateConfig        :: IO (Maybe so)
   }
 
 defaultMain :: (Show so, Read so) => PreforkSettings so -> (so -> IO ()) -> IO ()
@@ -71,54 +69,64 @@ masterMain :: (Show so, Read so) => PreforkSettings so -> IO ()
 masterMain settings = do
   ctrlChan  <- newTChanIO
   procs     <- newTVarIO M.empty
-  (sopt, _) <- (psUpdateConfigFn settings)
-  soptVar   <- newTVarIO sopt
+  mso       <- psUpdateConfig settings
+  soptVar   <- newTVarIO mso
   setupServer ctrlChan
-  masterMainLoop (Prefork soptVar ctrlChan procs settings) False
+  masterMainLoop (Prefork soptVar ctrlChan procs settings)
 
-defaultTerminateHandler cids opt = mapM_ (sendSignal sigTERM) cids
+defaultSettings = PreforkSettings {
+    psTerminateHandler = \pids opt -> mapM_ (sendSignal sigTERM) pids
+  , psInterruptHandler = \pids opt -> mapM_ (sendSignal sigINT) pids
+  , psHungupHandler    = \pids opt -> return ()
+  , psCleanupChild     = \pid opt -> return ()
+  , psUpdateConfig     = return (Nothing)
+  }
 
-defaultInterruptHandler cids opt = mapM_ (sendSignal sigINT) cids
-
-defaultHungupHandler cids opt = return ()
-
-defaultChildHandler cids opt = return ()
-
-masterMainLoop :: (Show so, Read so) => Prefork so -> Bool -> IO ()
-masterMainLoop prefork finishing = do
+masterMainLoop :: (Show so, Read so) => Prefork so -> IO ()
+masterMainLoop prefork@Prefork { pSettings = settings } = do
   setHandler sigCHLD $ childHandler (pCtrlChan prefork)
   loop False
   where
-    loop False = do
-      (msg, cids, opt) <- atomically $ do
+    loop finishing = do
+      (msg, cids) <- atomically $ do
         msg <- readTChan $ pCtrlChan prefork
         procs <- readTVar $ pProcs prefork
-        opt <- readTVar $ pServerOption prefork
-        return (msg, M.keys procs, opt)
-      finRequested <- dispatch (pSettings prefork) msg cids opt
+        return (msg, M.keys procs)
+      finRequested <- dispatch msg cids
       childIds <- fmap M.keys $ readTVarIO (pProcs prefork)
       unless ((finishing || finRequested) && null childIds) $ loop (finishing || finRequested)
 
-    dispatch settings msg cids opt = case msg of
+    dispatch msg cids = case msg of
       TerminateCM -> do
-        (psTerminateHandler settings) cids opt
+        mopt <- readTVarIO $ pServerOption prefork
+        maybe (return ()) (\opt -> (psTerminateHandler settings) cids opt) mopt
         return (True)
       InterruptCM -> do
-        (psInterruptHandler settings) cids opt
+        mopt <- readTVarIO $ pServerOption prefork
+        maybe (return ()) (\opt -> (psInterruptHandler settings) cids opt) mopt
         return (True)
       HungupCM -> do
-        (opt', _) <- (psUpdateConfigFn settings)
-        (psHungupHandler settings) cids opt'
+        mopt' <- psUpdateConfig settings
+        case mopt' of
+          Just opt' -> do
+            atomically $ writeTVar (pServerOption prefork) mopt'
+            (psHungupHandler settings) cids opt'
+          Nothing -> return ()
         return (False)
       QuitCM -> do
         return (False)
       ChildCM -> do
-        pids <- cleanupChildren opt cids (pProcs prefork)
-        (psChildHandler settings) pids opt
+        finished <- cleanupChildren cids (pProcs prefork)
+        mopt <- readTVarIO $ pServerOption prefork
+        case mopt of
+          Just opt -> do
+            forM_ finished $ \pid -> do
+              (psCleanupChild settings) pid opt
+          Nothing -> return ()
         return (False)
 
-cleanupChildren :: (Show so, Read so) => so -> [ProcessID] -> ProcessMapTVar -> IO ([ProcessID])
-cleanupChildren opt cids procs = do
+cleanupChildren :: [ProcessID] -> ProcessMapTVar -> IO ([ProcessID])
+cleanupChildren cids procs = do
   r <- mapM (getProcessStatus False False) cids
   let finished = catMaybes $ flip map (zip cids r) $ \x -> case x of
                                                              (pid, Just _exitCode) -> Just pid

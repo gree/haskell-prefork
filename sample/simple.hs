@@ -8,17 +8,10 @@ data ServerOption = ServerOption1 deriving (Show, Read)
 
 main :: IO ()
 main = do
-  defaultMain PreforkSettings {
-    psTerminateHandler = defaultTerminateHandler
-  , psInterruptHandler = defaultInterruptHandler
-  , psHungupHandler    = defaultHungupHandler
-  , psChildHandler     = defaultChildHandler
-  , psUpdateConfigFn   = updateConfig
-                              } $ do
-    \so -> return ()
+  defaultMain defaultSettings { psUpdateConfig = updateConfig } $ \so -> return ()
 
-updateConfig :: IO (ServerOption, String)
+updateConfig :: IO (Maybe ServerOption)
 updateConfig = do
-  return (ServerOption1, "")
+  return (Just ServerOption1)
 
 newServerResource = ServerResource []
