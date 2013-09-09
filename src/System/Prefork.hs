@@ -69,10 +69,11 @@ compatMain settings workerAction = do
 
 masterMain :: (Show so, Read so) => PreforkSettings so -> IO ()
 masterMain settings = do
-  ctrlChan <- newTChanIO
-  procs <- newTVarIO M.empty
+  ctrlChan  <- newTChanIO
+  procs     <- newTVarIO M.empty
   (sopt, _) <- (psUpdateConfigFn settings)
-  soptVar <- newTVarIO sopt
+  soptVar   <- newTVarIO sopt
+  setupServer ctrlChan
   masterMainLoop (Prefork soptVar ctrlChan procs settings) False
 
 defaultTerminateHandler cids opt = mapM_ (sendSignal sigTERM) cids
