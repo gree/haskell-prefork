@@ -23,6 +23,7 @@ import System.Posix hiding (version)
 import System.Environment (getArgs, lookupEnv)
 -- import Data.Default (Default, def)
 
+-- import System.Prefork.Class
 import System.Prefork.Worker
 
 data ControlMessage = 
@@ -36,36 +37,38 @@ data ControlMessage =
 type ControlTChan   = TChan ControlMessage
 type ProcessMapTVar = TVar (Map ProcessID String)
 
-data (Show so, Read so) => Prefork so = Prefork {
-    pServerOption :: !(TVar (Maybe so))
+data Prefork sc = Prefork {
+  --  pServerOption :: !(TVar (Maybe so))
+    pServerConfig :: !(TVar (Maybe sc))
   , pCtrlChan     :: !ControlTChan
   , pProcs        :: !ProcessMapTVar
-  , pSettings     :: PreforkSettings so
+  , pSettings     :: PreforkSettings sc
   }
 
-data (Show so, Read so) => PreforkSettings so = PreforkSettings {
-    psTerminateHandler    :: [ProcessID] -> so -> IO ()
-  , psInterruptHandler    :: [ProcessID] -> so -> IO ()
-  , psHungupHandler       :: [ProcessID] -> so -> IO ()
-  , psCleanupChild        :: ProcessID -> so -> IO ()
-  , psUpdateConfig        :: IO (Maybe so)
+data PreforkSettings sc = PreforkSettings {
+    psTerminateHandler    :: sc -> [ProcessID] -> IO ()
+  , psInterruptHandler    :: sc -> [ProcessID] -> IO ()
+  , psHungupHandler       :: sc -> [ProcessID] -> IO ()
+  , psCleanupChild        :: sc -> ProcessID -> IO ()
+  , psUpdateConfig        :: IO (Maybe sc)
   }
 
-defaultMain :: (Show so, Read so) => PreforkSettings so -> (so -> IO ()) -> IO ()
+defaultMain :: (Show so, Read so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
 defaultMain settings workerAction = do
   mPrefork <- lookupEnv envPrefork
   case mPrefork of
     Just _ -> workerMain workerAction
     Nothing -> masterMain settings
 
-compatMain :: (Show so, Read so) => PreforkSettings so -> (so -> IO ()) -> IO ()
+compatMain :: (Show so, Read so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
 compatMain settings workerAction = do
+  mPrefork <- lookupEnv envPrefork
   args <- getArgs
-  case args of 
-    x:_ | x == "server" -> workerMain workerAction
-    _ -> masterMain settings
+  case (listToMaybe args) of 
+    Just x | x == "server" -> workerMain workerAction
+    Nothing -> masterMain settings
 
-masterMain :: (Show so, Read so) => PreforkSettings so -> IO ()
+masterMain :: PreforkSettings sc -> IO ()
 masterMain settings = do
   ctrlChan  <- newTChanIO
   procs     <- newTVarIO M.empty
@@ -75,14 +78,14 @@ masterMain settings = do
   masterMainLoop (Prefork soptVar ctrlChan procs settings)
 
 defaultSettings = PreforkSettings {
-    psTerminateHandler = \pids opt -> mapM_ (sendSignal sigTERM) pids
-  , psInterruptHandler = \pids opt -> mapM_ (sendSignal sigINT) pids
-  , psHungupHandler    = \pids opt -> return ()
-  , psCleanupChild     = \pid opt -> return ()
+    psTerminateHandler = \config -> mapM_ (sendSignal sigTERM)
+  , psInterruptHandler = \config -> mapM_ (sendSignal sigINT)
+  , psHungupHandler    = \config pids -> return ()
+  , psCleanupChild     = \config pid -> return ()
   , psUpdateConfig     = return (Nothing)
   }
 
-masterMainLoop :: (Show so, Read so) => Prefork so -> IO ()
+masterMainLoop :: Prefork sc -> IO ()
 masterMainLoop prefork@Prefork { pSettings = settings } = do
   setHandler sigCHLD $ childHandler (pCtrlChan prefork)
   loop False
@@ -98,30 +101,28 @@ masterMainLoop prefork@Prefork { pSettings = settings } = do
 
     dispatch msg cids = case msg of
       TerminateCM -> do
-        mopt <- readTVarIO $ pServerOption prefork
-        maybe (return ()) (\opt -> (psTerminateHandler settings) cids opt) mopt
+        m <- readTVarIO $ pServerConfig prefork
+        maybe (return ()) (flip (psTerminateHandler settings) cids) m
         return (True)
       InterruptCM -> do
-        mopt <- readTVarIO $ pServerOption prefork
-        maybe (return ()) (\opt -> (psInterruptHandler settings) cids opt) mopt
+        m <- readTVarIO $ pServerConfig prefork
+        maybe (return ()) (flip (psInterruptHandler settings) cids) m
         return (True)
       HungupCM -> do
-        mopt' <- psUpdateConfig settings
-        case mopt' of
-          Just opt' -> do
-            atomically $ writeTVar (pServerOption prefork) mopt'
-            (psHungupHandler settings) cids opt'
-          Nothing -> return ()
+        mConfig <- psUpdateConfig settings
+        flip (maybe (return ())) mConfig $ \config -> do
+          atomically $ writeTVar (pServerConfig prefork) mConfig
+          (psHungupHandler settings) config cids 
         return (False)
       QuitCM -> do
         return (False)
       ChildCM -> do
         finished <- cleanupChildren cids (pProcs prefork)
-        mopt <- readTVarIO $ pServerOption prefork
-        case mopt of
-          Just opt -> do
+        mConfig <- readTVarIO $ pServerConfig prefork
+        case mConfig of
+          Just config -> do
             forM_ finished $ \pid -> do
-              (psCleanupChild settings) pid opt
+              (psCleanupChild settings) config pid
           Nothing -> return ()
         return (False)
 

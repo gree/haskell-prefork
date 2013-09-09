@@ -1,17 +1,20 @@
 
+{-# LANGUAGE ScopedTypeVariables #-}
+
 import System.Prefork
 import Network.Socket
 
 data ServerResource = ServerResource [Socket]
 
+data ServerConfig = ServerConfig
 data ServerOption = ServerOption1 deriving (Show, Read)
 
 main :: IO ()
 main = do
-  defaultMain defaultSettings { psUpdateConfig = updateConfig } $ \so -> return ()
+  defaultMain defaultSettings { psUpdateConfig = updateConfig } $ \(so :: ServerOption) -> return ()
 
-updateConfig :: IO (Maybe ServerOption)
+updateConfig :: IO (Maybe ServerConfig)
 updateConfig = do
-  return (Just ServerOption1)
+  return (Just ServerConfig)
 
 newServerResource = ServerResource []
