@@ -12,6 +12,7 @@ main = do
     psTerminateHandler = defaultTerminateHandler
   , psInterruptHandler = defaultInterruptHandler
   , psHungupHandler    = defaultHungupHandler
+  , psChildHandler     = defaultChildHandler
   , psReadConfigFn     = readConfig
                               } $ do
     \so -> return ()

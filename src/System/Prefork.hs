@@ -9,6 +9,7 @@ module System.Prefork(
   , defaultTerminateHandler
   , defaultInterruptHandler
   , defaultHungupHandler
+  , defaultChildHandler
                      ) where
 
 import Prelude hiding (catch)
@@ -47,6 +48,7 @@ data (Show so, Read so) => PreforkSettings so = PreforkSettings {
     psTerminateHandler :: [ProcessID] -> so -> IO ()
   , psInterruptHandler :: [ProcessID] -> so -> IO ()
   , psHungupHandler    :: [ProcessID] -> so -> IO ()
+  , psChildHandler     :: [ProcessID] -> so -> IO ()
   , psReadConfigFn     :: IO (so, String)
   }
 
@@ -70,9 +72,16 @@ masterMain settings = do
   procs <- newTVarIO M.empty
   (sopt, _) <- (psReadConfigFn settings)
   soptVar <- newTVarIO sopt
-  -- let settings = PreforkSettings defaultTerminateHandler defaultInterruptHandler defaultHungupHandler readConfigFn
   masterMainLoop (Prefork soptVar ctrlChan procs settings) False
-  
+
+defaultTerminateHandler cids opt = mapM_ (sendSignal sigTERM) cids
+
+defaultInterruptHandler cids opt = mapM_ (sendSignal sigINT) cids
+
+defaultHungupHandler cids opt = return ()
+
+defaultChildHandler cids opt = return ()
+
 masterMainLoop :: (Show so, Read so) => Prefork so -> Bool -> IO ()
 masterMainLoop prefork finishing = do
   setHandler sigCHLD $ childHandler (pCtrlChan prefork)
@@ -90,11 +99,9 @@ masterMainLoop prefork finishing = do
 
     dispatch settings msg cids opt = case msg of
       TerminateCM -> do
-        -- mapM_ (sendSignal sigTERM) cids
         (psTerminateHandler settings) cids opt
         return (True)
       InterruptCM -> do
-        -- mapM_ (sendSignal sigINT) cids
         (psInterruptHandler settings) cids opt
         return (True)
       HungupCM -> do
@@ -104,15 +111,11 @@ masterMainLoop prefork finishing = do
       QuitCM -> do
         return (False)
       ChildCM -> do
-        cleanupChildren opt cids (pProcs prefork)
+        pids <- cleanupChildren opt cids (pProcs prefork)
+        (psChildHandler settings) pids opt
         return (False)
 
-defaultTerminateHandler cids opt = mapM_ (sendSignal sigTERM) cids
-
-defaultInterruptHandler cids opt = mapM_ (sendSignal sigINT) cids
-
-defaultHungupHandler cids opt = return ()
-
+cleanupChildren :: (Show so, Read so) => so -> [ProcessID] -> ProcessMapTVar -> IO ([ProcessID])
 cleanupChildren opt cids procs = do
   r <- mapM (getProcessStatus False False) cids
   let finished = catMaybes $ flip map (zip cids r) $ \x -> case x of
@@ -120,6 +123,7 @@ cleanupChildren opt cids procs = do
                                                              _ -> Nothing
   atomically $ do
     modifyTVar' procs $ M.filterWithKey (\k _v -> k `notElem` finished)
+  return (finished)
 
 childHandler :: ControlTChan -> System.Posix.Handler
 childHandler ctrlChan = Catch $ do
