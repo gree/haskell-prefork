@@ -6,6 +6,7 @@
 module System.Prefork(
     PreforkSettings(..)
   , defaultMain
+  , compatMain
   , defaultTerminateHandler
   , defaultInterruptHandler
   , defaultHungupHandler
@@ -49,7 +50,7 @@ data (Show so, Read so) => PreforkSettings so = PreforkSettings {
   , psInterruptHandler :: [ProcessID] -> so -> IO ()
   , psHungupHandler    :: [ProcessID] -> so -> IO ()
   , psChildHandler     :: [ProcessID] -> so -> IO ()
-  , psReadConfigFn     :: IO (so, String)
+  , psUpdateConfigFn   :: IO (so, String)
   }
 
 defaultMain :: (Show so, Read so) => PreforkSettings so -> (so -> IO ()) -> IO ()
@@ -70,7 +71,7 @@ masterMain :: (Show so, Read so) => PreforkSettings so -> IO ()
 masterMain settings = do
   ctrlChan <- newTChanIO
   procs <- newTVarIO M.empty
-  (sopt, _) <- (psReadConfigFn settings)
+  (sopt, _) <- (psUpdateConfigFn settings)
   soptVar <- newTVarIO sopt
   masterMainLoop (Prefork soptVar ctrlChan procs settings) False
 
@@ -105,7 +106,7 @@ masterMainLoop prefork finishing = do
         (psInterruptHandler settings) cids opt
         return (True)
       HungupCM -> do
-        (opt', _) <- (psReadConfigFn settings)
+        (opt', _) <- (psUpdateConfigFn settings)
         (psHungupHandler settings) cids opt'
         return (False)
       QuitCM -> do

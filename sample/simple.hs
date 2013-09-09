@@ -13,12 +13,12 @@ main = do
   , psInterruptHandler = defaultInterruptHandler
   , psHungupHandler    = defaultHungupHandler
   , psChildHandler     = defaultChildHandler
-  , psReadConfigFn     = readConfig
+  , psUpdateConfigFn   = updateConfig
                               } $ do
     \so -> return ()
 
-readConfig :: IO (ServerOption, String)
-readConfig = do
+updateConfig :: IO (ServerOption, String)
+updateConfig = do
   return (ServerOption1, "")
 
 newServerResource = ServerResource []
