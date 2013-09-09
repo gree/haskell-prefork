@@ -1,4 +1,6 @@
 
+{-# LANGUAGE NoMonomorphismRestriction #-}
+
 {- | This is a library for servers based on worker process model.
 -}
 module System.Prefork(defaultMain) where
@@ -13,7 +15,7 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
 import System.Posix hiding (version)
-import System.Environment (getArgs)
+import System.Environment (getArgs, lookupEnv)
 
 import System.Prefork.Worker
 
@@ -30,25 +32,41 @@ type ProcessMapTVar = TVar (Map ProcessID String)
 
 data (Show so, Read so) => Prefork so = Prefork {
     pServerOption :: !(TVar so)
-  , pReadConfigFn :: IO (so, String)
   , pCtrlChan     :: !ControlTChan
   , pProcs        :: !ProcessMapTVar
+  , pSettings     :: PreforkSettings so
   }
 
+data (Show so, Read so) => PreforkSettings so = PreforkSettings {
+    psTerminateHandler :: [ProcessID] -> so -> IO ()
+  , psInterruptHandler :: [ProcessID] -> so -> IO ()
+  , psHungupHandler    :: [ProcessID] -> so -> IO ()
+  , psReadConfigFn     :: IO (so, String)
+  }
 
 defaultMain :: (Show so, Read so) => IO (so, String) -> (so -> IO ()) -> IO ()
 defaultMain readConfigFn workerAction = do
+  mPrefork <- lookupEnv envPrefork
+  case mPrefork of
+    Just _ -> workerMain workerAction
+    Nothing -> masterMain readConfigFn
+
+compatMain :: (Show so, Read so) => IO (so, String) -> (so -> IO ()) -> IO ()
+compatMain readConfigFn workerAction = do
   args <- getArgs
   case args of 
-    x:_ | x == "server" -> do
-      workerMain workerAction
-    _ -> do
-      ctrlChan <- newTChanIO
-      procs <- newTVarIO M.empty
-      (sopt, _) <- readConfigFn
-      soptVar <- newTVarIO sopt
-      masterMainLoop (Prefork soptVar readConfigFn ctrlChan procs) False
+    x:_ | x == "server" -> workerMain workerAction
+    _ -> masterMain readConfigFn
 
+masterMain :: (Show so, Read so) => IO (so, String) -> IO ()
+masterMain readConfigFn = do
+  ctrlChan <- newTChanIO
+  procs <- newTVarIO M.empty
+  (sopt, _) <- readConfigFn
+  soptVar <- newTVarIO sopt
+  let settings = PreforkSettings defaultTerminateHandler defaultInterruptHandler defaultHungupHandler readConfigFn
+  masterMainLoop (Prefork soptVar ctrlChan procs settings) False
+  
 masterMainLoop :: (Show so, Read so) => Prefork so -> Bool -> IO ()
 masterMainLoop prefork finishing = do
   setHandler sigCHLD $ childHandler (pCtrlChan prefork)
@@ -60,25 +78,34 @@ masterMainLoop prefork finishing = do
         procs <- readTVar $ pProcs prefork
         opt <- readTVar $ pServerOption prefork
         return (msg, M.keys procs, opt)
-      finRequested <- dispatch msg cids opt
+      finRequested <- dispatch (pSettings prefork) msg cids opt
       childIds <- fmap M.keys $ readTVarIO (pProcs prefork)
       unless ((finishing || finRequested) && null childIds) $ loop (finishing || finRequested)
 
-    dispatch msg cids opt = case msg of
+    dispatch settings msg cids opt = case msg of
       TerminateCM -> do
-        mapM_ (sendSignal sigTERM) cids
+        -- mapM_ (sendSignal sigTERM) cids
+        (psTerminateHandler settings) cids opt
         return (True)
       InterruptCM -> do
-        mapM_ (sendSignal sigINT) cids
+        -- mapM_ (sendSignal sigINT) cids
+        (psInterruptHandler settings) cids opt
         return (True)
       HungupCM -> do
-        -- updateServer fs configFile
+        (opt', _) <- (psReadConfigFn settings)
+        (psHungupHandler settings) cids opt'
         return (False)
       QuitCM -> do
         return (False)
       ChildCM -> do
         cleanupChildren opt cids (pProcs prefork)
         return (False)
+
+defaultTerminateHandler cids opt = mapM_ (sendSignal sigTERM) cids
+
+defaultInterruptHandler cids opt = mapM_ (sendSignal sigINT) cids
+
+defaultHungupHandler cids opt = return ()
 
 cleanupChildren opt cids procs = do
   r <- mapM (getProcessStatus False False) cids
@@ -113,3 +140,6 @@ sendSignal sig cid = signalProcess sig cid `catch` ignore
   where
     ignore :: SomeException -> IO ()
     ignore _ = return ()
+
+envPrefork = "PREFORK"
+
