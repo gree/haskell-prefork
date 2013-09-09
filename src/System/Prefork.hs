@@ -3,7 +3,13 @@
 
 {- | This is a library for servers based on worker process model.
 -}
-module System.Prefork(defaultMain) where
+module System.Prefork(
+    PreforkSettings(..)
+  , defaultMain
+  , defaultTerminateHandler
+  , defaultInterruptHandler
+  , defaultHungupHandler
+                     ) where
 
 import Prelude hiding (catch)
 import Data.List
@@ -44,27 +50,27 @@ data (Show so, Read so) => PreforkSettings so = PreforkSettings {
   , psReadConfigFn     :: IO (so, String)
   }
 
-defaultMain :: (Show so, Read so) => IO (so, String) -> (so -> IO ()) -> IO ()
-defaultMain readConfigFn workerAction = do
+defaultMain :: (Show so, Read so) => PreforkSettings so -> (so -> IO ()) -> IO ()
+defaultMain settings workerAction = do
   mPrefork <- lookupEnv envPrefork
   case mPrefork of
     Just _ -> workerMain workerAction
-    Nothing -> masterMain readConfigFn
+    Nothing -> masterMain settings
 
-compatMain :: (Show so, Read so) => IO (so, String) -> (so -> IO ()) -> IO ()
-compatMain readConfigFn workerAction = do
+compatMain :: (Show so, Read so) => PreforkSettings so -> (so -> IO ()) -> IO ()
+compatMain settings workerAction = do
   args <- getArgs
   case args of 
     x:_ | x == "server" -> workerMain workerAction
-    _ -> masterMain readConfigFn
+    _ -> masterMain settings
 
-masterMain :: (Show so, Read so) => IO (so, String) -> IO ()
-masterMain readConfigFn = do
+masterMain :: (Show so, Read so) => PreforkSettings so -> IO ()
+masterMain settings = do
   ctrlChan <- newTChanIO
   procs <- newTVarIO M.empty
-  (sopt, _) <- readConfigFn
+  (sopt, _) <- (psReadConfigFn settings)
   soptVar <- newTVarIO sopt
-  let settings = PreforkSettings defaultTerminateHandler defaultInterruptHandler defaultHungupHandler readConfigFn
+  -- let settings = PreforkSettings defaultTerminateHandler defaultInterruptHandler defaultHungupHandler readConfigFn
   masterMainLoop (Prefork soptVar ctrlChan procs settings) False
   
 masterMainLoop :: (Show so, Read so) => Prefork so -> Bool -> IO ()

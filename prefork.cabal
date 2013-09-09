@@ -25,7 +25,6 @@ library
                    , unix
                    , system-argv0
                    , system-filepath
-                   , data-default
                    , process
 
 Executable jobqueue-sample-simple
