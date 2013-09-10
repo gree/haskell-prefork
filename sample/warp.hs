@@ -16,10 +16,16 @@ import Blaze.ByteString.Builder.Char.Utf8
 import System.Posix
 import System.Prefork
 
-data Config = Config Warp.Settings
+data Config = Config {
+    cWarpSettings :: Warp.Settings
+  , cPort :: Int
+  , cHost :: String
+  }
 
 data Worker = Worker {
     wSocketFd :: CInt
+  , wPort :: Int
+  , wHost :: String
   } deriving (Show, Read)
 
 instance WorkerContext Worker
@@ -54,19 +60,19 @@ main = do
 updateConfig :: IO (Maybe Config)
 updateConfig = do
   let settings = Warp.defaultSettings
-  return (Just $ Config settings)
+  return (Just $ Config settings 11111 "localhost")
 
 updateServer :: Server -> Config -> IO ([ProcessID])
-updateServer Server { sServerSoc = socVar } _config = do
+updateServer Server { sServerSoc = socVar } Config { cHost = host, cPort = port } = do
   msoc <- readTVarIO socVar
   soc <- case msoc of
     Just soc -> return (soc)
     Nothing -> do
-      hentry <- getHostByName "localhost"
-      soc <- listenOnAddr (SockAddrInet 11111 (head $ hostAddresses hentry))
+      hentry <- getHostByName host
+      soc <- listenOnAddr (SockAddrInet (fromIntegral port) (head $ hostAddresses hentry))
       atomically $ writeTVar socVar (Just soc)
       return (soc)
-  forM [1..10] $ \(_ :: Int) -> forkWorkerProcess (Worker { wSocketFd = fdSocket soc })
+  forM [1..10] $ \(_ :: Int) -> forkWorkerProcess (Worker { wSocketFd = fdSocket soc, wHost = host, wPort = port })
 
 cleanupChild :: Server -> Config -> ProcessID -> IO ()
 cleanupChild _server _config _pid = do
