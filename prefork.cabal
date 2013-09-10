@@ -16,6 +16,8 @@ cabal-version:       >=1.8
 
 library
   exposed-modules:   System.Prefork
+                   , System.Prefork.Main
+                   , System.Prefork.Types
                    , System.Prefork.Worker
   -- other-modules:       
   hs-source-dirs:    src

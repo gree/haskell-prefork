@@ -13,7 +13,6 @@ import System.Exit
 import System.Argv0
 import Data.Maybe
 
-
 forkWorker :: (Read so, Show so) => so -> IO ProcessID
 forkWorker opt = do
   exe <- liftM encodeString getArgv0
@@ -32,4 +31,5 @@ extractProcessID :: ProcessHandle -> IO ProcessID
 extractProcessID h = withProcessHandle h $ \x -> case x of
   OpenHandle pid -> return (x, pid)
   _ -> throwIO $ userError "Unable to retrieve child process ID."
+
 
