@@ -28,13 +28,12 @@ data Worker = Worker {
 instance WorkerContext Worker
 
 data Server = Server {
-    sProcs     :: TVar ([ProcessID])
-  , sServerSoc :: TVar (Maybe Socket)
+    sServerSoc :: TVar (Maybe Socket)
   }
 
 main :: IO ()
 main = do
-  s <- Server <$> newTVarIO [] <*> newTVarIO Nothing
+  s <- Server <$> newTVarIO Nothing
   let settings = defaultSettings {
       psUpdateConfig = updateConfig
     , psUpdateServer = updateServer s
@@ -68,8 +67,7 @@ updateServer server@Server { sServerSoc = socVar } config = do
       soc <- listenOnAddr (SockAddrInet 11111 (head $ hostAddresses hentry))
       atomically $ writeTVar socVar (Just soc)
       return (soc)
-  pids <- forM [1..10] $ \_ -> forkWorkerProcess (Worker (fdSocket soc))
-  return (pids)
+  forM [1..10] $ \_ -> forkWorkerProcess (Worker (fdSocket soc))
 
 cleanupChild :: Server -> Config -> ProcessID -> IO ()
 cleanupChild server config pid = do
