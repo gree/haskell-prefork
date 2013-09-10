@@ -32,11 +32,12 @@ instance WorkerContext Worker
 
 data Server = Server {
     sServerSoc :: TVar (Maybe Socket)
+  , sProcs :: TVar [ProcessID]
   }
 
 main :: IO ()
 main = do
-  s <- Server <$> newTVarIO Nothing
+  s <- Server <$> newTVarIO Nothing <*> newTVarIO []
   let settings = defaultSettings {
       psUpdateConfig = updateConfig
     , psUpdateServer = updateServer s
@@ -63,7 +64,7 @@ updateConfig = do
   return (Just $ Config settings 11111 "localhost")
 
 updateServer :: Server -> Config -> IO ([ProcessID])
-updateServer Server { sServerSoc = socVar } Config { cHost = host, cPort = port } = do
+updateServer Server { sServerSoc = socVar, sProcs = procs } Config { cHost = host, cPort = port } = do
   msoc <- readTVarIO socVar
   soc <- case msoc of
     Just soc -> return (soc)
@@ -72,10 +73,17 @@ updateServer Server { sServerSoc = socVar } Config { cHost = host, cPort = port 
       soc <- listenOnAddr (SockAddrInet (fromIntegral port) (head $ hostAddresses hentry))
       atomically $ writeTVar socVar (Just soc)
       return (soc)
-  forM [1..10] $ \(_ :: Int) -> forkWorkerProcess (Worker { wSocketFd = fdSocket soc, wHost = host, wPort = port })
+  newPids <- forM [1..10] $ \(_ :: Int) -> forkWorkerProcess (Worker { wSocketFd = fdSocket soc, wHost = host, wPort = port })
+  oldPids <- atomically $ do
+    oldPids <- readTVar procs
+    writeTVar procs newPids
+    return (oldPids)
+  forM_ oldPids $ sendSignal sigTERM
+  return (newPids)
 
 cleanupChild :: Server -> Config -> ProcessID -> IO ()
-cleanupChild _server _config _pid = do
+cleanupChild Server { sProcs = procs } _config pid = do
+  atomically $ modifyTVar' procs $ filter (/= pid)
   return ()
 
 listenOnAddr :: SockAddr -> IO Socket
@@ -91,3 +99,10 @@ listenOnAddr sockAddr = do
       listen sock backlog
       return sock
     )
+
+sendSignal :: Signal -> ProcessID -> IO ()
+sendSignal sig cid = signalProcess sig cid `catch` ignore
+  where
+    ignore :: SomeException -> IO ()
+    ignore _ = return ()
+
