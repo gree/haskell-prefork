@@ -21,7 +21,7 @@ import Control.Exception
 import System.Posix hiding (version)
 import System.Environment (getArgs, lookupEnv)
 
--- import System.Prefork.Class
+import System.Prefork.Class
 import System.Prefork.Types
 import System.Prefork.Worker
 
@@ -42,14 +42,14 @@ data Prefork sc = Prefork {
   , pSettings     :: !(PreforkSettings sc)
   }
 
-defaultMain :: (Show so, Read so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
+defaultMain :: (WorkerContext so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
 defaultMain settings workerAction = do
   mPrefork <- lookupEnv envPrefork
   case mPrefork of
     Just _ -> workerMain workerAction
     Nothing -> masterMain settings
 
-compatMain :: (Show so, Read so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
+compatMain :: (WorkerContext so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
 compatMain settings workerAction = do
   mPrefork <- lookupEnv envPrefork
   args <- getArgs
@@ -64,18 +64,17 @@ masterMain settings = do
   mso       <- psUpdateConfig settings
   soptVar   <- newTVarIO mso
   let prefork = Prefork soptVar ctrlChan procs settings
-  setHandler sigCHLD $ childHandler ctrlChan
   setupServer ctrlChan
   atomically $ writeTChan ctrlChan HungupCM  
   masterMainLoop prefork
 
 defaultSettings :: PreforkSettings sc
 defaultSettings = PreforkSettings {
-    psTerminateHandler = \config -> mapM_ (sendSignal sigTERM)
-  , psInterruptHandler = \config -> mapM_ (sendSignal sigINT)
-  , psOnChildFinished  = \config -> return ([])
-  , psUpdateServer     = \config -> return ([])
-  , psCleanupChild     = \config pid -> return ()
+    psOnTerminate      = \_ -> mapM_ (sendSignal sigTERM)
+  , psOnInterrupt      = \_ -> mapM_ (sendSignal sigINT)
+  , psOnChildFinished  = \_ -> return ([])
+  , psUpdateServer     = \_ -> return ([])
+  , psCleanupChild     = \_ pid -> return ()
   , psUpdateConfig     = return (Nothing)
   }
 
@@ -94,11 +93,11 @@ masterMainLoop prefork@Prefork { pSettings = settings } = loop False
     dispatch msg cids finishing = case msg of
       TerminateCM -> do
         m <- readTVarIO $ pServerConfig prefork
-        maybe (return ()) (flip (psTerminateHandler settings) cids) m
+        maybe (return ()) (flip (psOnTerminate settings) cids) m
         return (True)
       InterruptCM -> do
         m <- readTVarIO $ pServerConfig prefork
-        maybe (return ()) (flip (psInterruptHandler settings) cids) m
+        maybe (return ()) (flip (psOnInterrupt settings) cids) m
         return (True)
       HungupCM -> do
         mConfig <- psUpdateConfig (pSettings prefork)
@@ -118,7 +117,7 @@ masterMainLoop prefork@Prefork { pSettings = settings } = loop False
             forM_ finished $ (psCleanupChild settings) config
             unless finishing $ do
               newProcs <- (psOnChildFinished settings) config
-              atomically $ modifyTVar' (pProcs prefork) $ \procs -> procs ++ newProcs
+              atomically $ modifyTVar' (pProcs prefork) $ (++) newProcs
           Nothing -> return ()
         return (False)
 
@@ -132,12 +131,10 @@ cleanupChildren cids procs = do
     modifyTVar' procs $ filter (\v -> v `notElem` finished)
   return (finished)
 
-childHandler :: ControlTChan -> System.Posix.Handler
-childHandler ctrlChan = Catch $ do
-  atomically $ writeTChan ctrlChan ChildCM
-
 setupServer :: ControlTChan -> IO ()
 setupServer chan = do
+  setHandler sigCHLD $ Catch $ do
+    atomically $ writeTChan chan ChildCM
   setHandler sigTERM $ Catch $ do
     atomically $ writeTChan chan TerminateCM
   setHandler sigINT $ Catch $ do

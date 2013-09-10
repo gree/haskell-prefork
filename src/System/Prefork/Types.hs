@@ -6,10 +6,10 @@ module System.Prefork.Types (
 import System.Posix hiding (version)
 
 data PreforkSettings sc = PreforkSettings {
-    psTerminateHandler    :: sc -> [ProcessID] -> IO ()
-  , psInterruptHandler    :: sc -> [ProcessID] -> IO ()
-  , psOnChildFinished     :: sc -> IO ([ProcessID])
-  , psUpdateServer        :: sc -> IO ([ProcessID])
-  , psCleanupChild        :: sc -> ProcessID -> IO ()
-  , psUpdateConfig        :: IO (Maybe sc)
+    psOnTerminate     :: sc -> [ProcessID] -> IO ()
+  , psOnInterrupt     :: sc -> [ProcessID] -> IO ()
+  , psOnChildFinished :: sc -> IO ([ProcessID])
+  , psUpdateServer    :: sc -> IO ([ProcessID])
+  , psCleanupChild    :: sc -> ProcessID -> IO ()
+  , psUpdateConfig    :: IO (Maybe sc)
   }
