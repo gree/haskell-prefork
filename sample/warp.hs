@@ -3,12 +3,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import Foreign.C.Types
-import Network hiding (accept, socketPort, recvFrom, sendTo)
 import Network.BSD
 import Network.Socket
 import Control.Applicative
 import Control.Exception
-import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Monad
 import Network.Wai
@@ -17,7 +15,6 @@ import Network.HTTP.Types
 import Blaze.ByteString.Builder.Char.Utf8
 import System.Posix
 import System.Prefork
-import System.Environment
 
 data Config = Config Warp.Settings
 
@@ -39,12 +36,14 @@ main = do
     , psUpdateServer = updateServer s
     , psCleanupChild = cleanupChild s
     }
-  compatMain settings $ \w@(Worker fd) -> do
+  compatMain settings $ \(Worker { wSocketFd = fd}) -> do
     soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
     sockAddr <- getSocketName soc
     case sockAddr of
-      SockAddrInet port addr -> do
-        Warp.runSettingsSocket Warp.defaultSettings { Warp.settingsPort = fromIntegral port } soc $ serverApp
+      SockAddrInet port _addr -> do
+        Warp.runSettingsSocket Warp.defaultSettings {
+            Warp.settingsPort = fromIntegral port
+          } soc $ serverApp
         return ()
       _ -> return ()
     return ()
@@ -58,7 +57,7 @@ updateConfig = do
   return (Just $ Config settings)
 
 updateServer :: Server -> Config -> IO ([ProcessID])
-updateServer server@Server { sServerSoc = socVar } config = do
+updateServer Server { sServerSoc = socVar } _config = do
   msoc <- readTVarIO socVar
   soc <- case msoc of
     Just soc -> return (soc)
@@ -67,10 +66,10 @@ updateServer server@Server { sServerSoc = socVar } config = do
       soc <- listenOnAddr (SockAddrInet 11111 (head $ hostAddresses hentry))
       atomically $ writeTVar socVar (Just soc)
       return (soc)
-  forM [1..10] $ \_ -> forkWorkerProcess (Worker (fdSocket soc))
+  forM [1..10] $ \(_ :: Int) -> forkWorkerProcess (Worker { wSocketFd = fdSocket soc })
 
 cleanupChild :: Server -> Config -> ProcessID -> IO ()
-cleanupChild server config pid = do
+cleanupChild _server _config _pid = do
   return ()
 
 listenOnAddr :: SockAddr -> IO Socket
