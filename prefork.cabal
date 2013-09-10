@@ -31,7 +31,7 @@ library
                    , data-default
                    , process
 
-Executable jobqueue-sample-simple
+Executable prefork-sample-simple
   Ghc-Options:     -threaded -Wall -rtsopts
   Build-Depends:   base >=4 && <5
                  , bytestring
@@ -40,5 +40,22 @@ Executable jobqueue-sample-simple
                  , prefork
   Hs-source-dirs:  sample
   Main-is:         simple.hs
+  Extensions:      DeriveDataTypeable
+
+Executable prefork-sample-warp
+  Ghc-Options:     -threaded -Wall -rtsopts
+  Build-Depends:   base >=4 && <5
+                 , bytestring
+                 , containers
+                 , network
+                 , wai
+                 , warp
+                 , stm
+                 , blaze-builder
+                 , http-types
+                 , unix
+                 , prefork
+  Hs-source-dirs:  sample
+  Main-is:         warp.hs
   Extensions:      DeriveDataTypeable
 

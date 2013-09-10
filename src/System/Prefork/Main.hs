@@ -70,7 +70,8 @@ masterMain settings = do
 
 defaultSettings :: PreforkSettings sc
 defaultSettings = PreforkSettings {
-    psOnTerminate      = \_ -> mapM_ (sendSignal sigTERM)
+    psOnStart          = \_ -> return ()
+  , psOnTerminate      = \_ -> mapM_ (sendSignal sigTERM)
   , psOnInterrupt      = \_ -> mapM_ (sendSignal sigINT)
   , psOnChildFinished  = \_ -> return ([])
   , psUpdateServer     = \_ -> return ([])
