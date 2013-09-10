@@ -64,37 +64,34 @@ masterMain settings = do
   mso       <- psUpdateConfig settings
   soptVar   <- newTVarIO mso
   let prefork = Prefork soptVar ctrlChan procs settings
+  setHandler sigCHLD $ childHandler ctrlChan
   setupServer ctrlChan
-  mso <- (psUpdateConfig settings)
-  procs <- case mso of
-    Just so -> (psUpdateServer settings) so
-    Nothing -> return ([])
+  atomically $ writeTChan ctrlChan HungupCM  
   masterMainLoop prefork
 
 defaultSettings :: PreforkSettings sc
 defaultSettings = PreforkSettings {
     psTerminateHandler = \config -> mapM_ (sendSignal sigTERM)
   , psInterruptHandler = \config -> mapM_ (sendSignal sigINT)
+  , psOnChildFinished  = \config -> return ([])
   , psUpdateServer     = \config -> return ([])
   , psCleanupChild     = \config pid -> return ()
   , psUpdateConfig     = return (Nothing)
   }
 
 masterMainLoop :: Prefork sc -> IO ()
-masterMainLoop prefork@Prefork { pSettings = settings } = do
-  setHandler sigCHLD $ childHandler (pCtrlChan prefork)
-  loop False
+masterMainLoop prefork@Prefork { pSettings = settings } = loop False
   where
     loop finishing = do
       (msg, cids) <- atomically $ do
         msg <- readTChan $ pCtrlChan prefork
         procs <- readTVar $ pProcs prefork
         return (msg, procs)
-      finRequested <- dispatch msg cids
+      finRequested <- dispatch msg cids finishing
       childIds <- readTVarIO (pProcs prefork)
       unless ((finishing || finRequested) && null childIds) $ loop (finishing || finRequested)
 
-    dispatch msg cids = case msg of
+    dispatch msg cids finishing = case msg of
       TerminateCM -> do
         m <- readTVarIO $ pServerConfig prefork
         maybe (return ()) (flip (psTerminateHandler settings) cids) m
@@ -104,9 +101,9 @@ masterMainLoop prefork@Prefork { pSettings = settings } = do
         maybe (return ()) (flip (psInterruptHandler settings) cids) m
         return (True)
       HungupCM -> do
-        mConfig <- psUpdateConfig settings
+        mConfig <- psUpdateConfig (pSettings prefork)
         flip (maybe (return ())) mConfig $ \config -> do
-          newProcs <- (psUpdateServer settings) config
+          newProcs <- (psUpdateServer (pSettings prefork)) config
           atomically $ do
             writeTVar (pServerConfig prefork) mConfig
             modifyTVar' (pProcs prefork) $ \procs -> procs ++ newProcs
@@ -118,8 +115,10 @@ masterMainLoop prefork@Prefork { pSettings = settings } = do
         mConfig <- readTVarIO $ pServerConfig prefork
         case mConfig of
           Just config -> do
-            forM_ finished $ \pid -> do
-              (psCleanupChild settings) config pid
+            forM_ finished $ (psCleanupChild settings) config
+            unless finishing $ do
+              newProcs <- (psOnChildFinished settings) config
+              atomically $ modifyTVar' (pProcs prefork) $ \procs -> procs ++ newProcs
           Nothing -> return ()
         return (False)
 
