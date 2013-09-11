@@ -55,7 +55,7 @@ compatMain settings workerAction = do
   args <- getArgs
   case (listToMaybe args) of 
     Just x | x == "server" -> workerMain workerAction
-    Nothing -> masterMain settings
+    _ -> masterMain settings
 
 masterMain :: PreforkSettings sc -> IO ()
 masterMain settings = do
