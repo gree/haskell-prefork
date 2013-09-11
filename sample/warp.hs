@@ -2,6 +2,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+-- This is a simple web server based on Warp
+
+import Blaze.ByteString.Builder.Char.Utf8
 import Foreign.C.Types
 import Network.BSD
 import Network.Socket
@@ -12,16 +15,18 @@ import Control.Monad
 import Network.Wai
 import qualified Network.Wai.Handler.Warp as Warp
 import Network.HTTP.Types
-import Blaze.ByteString.Builder.Char.Utf8
 import System.Posix
 import System.Prefork
 
+-- Application specific configuration
 data Config = Config {
     cWarpSettings :: Warp.Settings
-  , cPort :: Int
-  , cHost :: String
+  , cPort         :: Int
+  , cHost         :: String
+  , cWorkers      :: Int
   }
 
+-- Worker context passed by the parent
 data Worker = Worker {
     wSocketFd :: CInt
   , wPort :: Int
@@ -30,11 +35,13 @@ data Worker = Worker {
 
 instance WorkerContext Worker
 
+-- Server states
 data Server = Server {
     sServerSoc :: TVar (Maybe Socket)
   , sProcs :: TVar [ProcessID]
   }
 
+-- Call defaultMain or compatMain
 main :: IO ()
 main = do
   s <- Server <$> newTVarIO Nothing <*> newTVarIO []
@@ -43,28 +50,23 @@ main = do
     , psUpdateServer = updateServer s
     , psCleanupChild = cleanupChild s
     }
-  compatMain settings $ \(Worker { wSocketFd = fd}) -> do
+  compatMain settings $ \(Worker { wSocketFd = fd, wPort = port, wHost = _host }) -> do
+    -- worker action
     soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
-    sockAddr <- getSocketName soc
-    case sockAddr of
-      SockAddrInet port _addr -> do
-        Warp.runSettingsSocket Warp.defaultSettings {
-            Warp.settingsPort = fromIntegral port
-          } soc $ serverApp
-        return ()
-      _ -> return ()
-    return ()
+    Warp.runSettingsSocket Warp.defaultSettings {
+        Warp.settingsPort = fromIntegral port
+      } soc $ serverApp
   where
     serverApp :: Application
     serverApp _ = return $ ResponseBuilder status200 [] $ fromString "hello"
 
+-- Load settings via IO
 updateConfig :: IO (Maybe Config)
-updateConfig = do
-  let settings = Warp.defaultSettings
-  return (Just $ Config settings 11111 "localhost")
+updateConfig = return (Just $ Config Warp.defaultSettings 11111 "localhost" 10)
 
+-- Update the entire state of a server
 updateServer :: Server -> Config -> IO ([ProcessID])
-updateServer Server { sServerSoc = socVar, sProcs = procs } Config { cHost = host, cPort = port } = do
+updateServer Server { sServerSoc = socVar, sProcs = procs } Config { cHost = host, cPort = port, cWorkers = workers } = do
   msoc <- readTVarIO socVar
   soc <- case msoc of
     Just soc -> return (soc)
@@ -73,7 +75,7 @@ updateServer Server { sServerSoc = socVar, sProcs = procs } Config { cHost = hos
       soc <- listenOnAddr (SockAddrInet (fromIntegral port) (head $ hostAddresses hentry))
       atomically $ writeTVar socVar (Just soc)
       return (soc)
-  newPids <- forM [1..10] $ \(_ :: Int) -> forkWorkerProcess (Worker { wSocketFd = fdSocket soc, wHost = host, wPort = port })
+  newPids <- replicateM workers $ forkWorkerProcess (Worker { wSocketFd = fdSocket soc, wHost = host, wPort = port })
   oldPids <- atomically $ do
     oldPids <- readTVar procs
     writeTVar procs newPids
@@ -81,11 +83,13 @@ updateServer Server { sServerSoc = socVar, sProcs = procs } Config { cHost = hos
   forM_ oldPids $ sendSignal sigTERM
   return (newPids)
 
+-- Clean up application specific resources associated to a child process
 cleanupChild :: Server -> Config -> ProcessID -> IO ()
 cleanupChild Server { sProcs = procs } _config pid = do
   atomically $ modifyTVar' procs $ filter (/= pid)
   return ()
 
+-- Create a server socket with SockAddr
 listenOnAddr :: SockAddr -> IO Socket
 listenOnAddr sockAddr = do
   let backlog = 1024
@@ -100,6 +104,7 @@ listenOnAddr sockAddr = do
       return sock
     )
 
+-- Send a signal
 sendSignal :: Signal -> ProcessID -> IO ()
 sendSignal sig cid = signalProcess sig cid `catch` ignore
   where
