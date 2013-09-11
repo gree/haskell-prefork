@@ -2,6 +2,7 @@
 module System.Prefork.Worker (
     forkWorkerProcess
   , workerMain
+  , preforkEnvKey
   ) where
 
 import Control.Monad
@@ -15,18 +16,25 @@ import System.IO (hPutStrLn)
 import System.Exit
 import System.Argv0
 import Data.Maybe
+import System.Environment (lookupEnv)
 
 import System.Prefork.Class
+
+preforkEnvKey = "PREFORK"
 
 {- |
 -}
 forkWorkerProcess :: (WorkerContext so) => so -> IO ProcessID
 forkWorkerProcess opt = do
   exe <- liftM encodeString getArgv0
-  let options = ["server"] ++ case rtsOptions opt of
+  mPrefork <- lookupEnv preforkEnvKey
+  let heads = case mPrefork of
+        Just _ -> []
+        Nothing -> ["server"]
+  let options = case rtsOptions opt of
         [] -> []
         rtsopt -> ["+RTS"] ++ rtsopt ++ ["-RTS"]
-  (jhin, _, _, ph) <- createProcess $ (proc exe options) { std_in = CreatePipe }
+  (jhin, _, _, ph) <- createProcess $ (proc exe (heads ++ options)) { std_in = CreatePipe }
   hPutStrLn (fromJust jhin) $ encodeToString opt
   extractProcessID ph
 

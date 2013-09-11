@@ -37,6 +37,7 @@ Executable prefork-sample-simple
                  , bytestring
                  , containers
                  , network
+                 , unix
                  , prefork
   Hs-source-dirs:  sample
   Main-is:         simple.hs

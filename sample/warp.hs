@@ -50,7 +50,7 @@ main = do
     , psUpdateServer = updateServer s
     , psCleanupChild = cleanupChild s
     }
-  compatMain settings $ \(Worker { wSocketFd = fd, wPort = port, wHost = _host }) -> do
+  defaultMain settings $ \(Worker { wSocketFd = fd, wPort = port, wHost = _host }) -> do
     -- worker action
     soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
     Warp.runSettingsSocket Warp.defaultSettings {

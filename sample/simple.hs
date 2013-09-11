@@ -2,21 +2,27 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import System.Prefork
-import Network.Socket
-
-data ServerResource = ServerResource [Socket]
+import System.Posix
 
 data ServerConfig = ServerConfig
-data ServerOption = ServerOption1 deriving (Show, Read)
+data ServerOption = ServerOption1 String deriving (Show, Read)
 
 instance WorkerContext ServerOption
 
 main :: IO ()
 main = do
-  defaultMain defaultSettings { psUpdateConfig = updateConfig } $ \(so :: ServerOption) -> return ()
+  defaultMain defaultSettings {
+      psUpdateConfig = updateConfig
+    , psUpdateServer = updateServer
+    } $ \so -> case so of
+    ServerOption1 msg -> do
+      print msg
 
 updateConfig :: IO (Maybe ServerConfig)
 updateConfig = do
   return (Just ServerConfig)
 
-newServerResource = ServerResource []
+updateServer :: ServerConfig -> IO ([ProcessID])
+updateServer ServerConfig = do
+  pid <- forkWorkerProcess (ServerOption1 "Hello. I'm a worker.")
+  return ([pid])

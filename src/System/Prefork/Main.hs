@@ -20,6 +20,7 @@ import Control.Concurrent.STM
 import Control.Exception
 import System.Posix hiding (version)
 import System.Environment (getArgs, lookupEnv)
+import System.Posix.Env (setEnv)
 
 import System.Prefork.Class
 import System.Prefork.Types
@@ -44,14 +45,15 @@ data Prefork sc = Prefork {
 
 defaultMain :: (WorkerContext so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
 defaultMain settings workerAction = do
-  mPrefork <- lookupEnv envPrefork
+  mPrefork <- lookupEnv preforkEnvKey
   case mPrefork of
     Just _ -> workerMain workerAction
-    Nothing -> masterMain settings
+    Nothing -> do
+      setEnv preforkEnvKey "server" True
+      masterMain settings
 
 compatMain :: (WorkerContext so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
 compatMain settings workerAction = do
-  mPrefork <- lookupEnv envPrefork
   args <- getArgs
   case (listToMaybe args) of 
     Just x | x == "server" -> workerMain workerAction
@@ -106,7 +108,7 @@ masterMainLoop prefork@Prefork { pSettings = settings } = loop False
           newProcs <- (psUpdateServer (pSettings prefork)) config
           atomically $ do
             writeTVar (pServerConfig prefork) mConfig
-            modifyTVar' (pProcs prefork) $ \procs -> procs ++ newProcs
+            modifyTVar' (pProcs prefork) $ (++) newProcs
         return (False)
       QuitCM -> do
         m <- readTVarIO $ pServerConfig prefork
@@ -157,6 +159,4 @@ sendSignal sig cid = signalProcess sig cid `catch` ignore
   where
     ignore :: SomeException -> IO ()
     ignore _ = return ()
-
-envPrefork = "PREFORK"
 
