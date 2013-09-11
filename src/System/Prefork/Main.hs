@@ -72,6 +72,7 @@ defaultSettings :: PreforkSettings sc
 defaultSettings = PreforkSettings {
     psOnTerminate      = \_ -> mapM_ (sendSignal sigTERM)
   , psOnInterrupt      = \_ -> mapM_ (sendSignal sigINT)
+  , psOnQuit           = \_ -> return ()
   , psOnChildFinished  = \_ -> return ([])
   , psUpdateServer     = \_ -> return ([])
   , psCleanupChild     = \_ pid -> return ()
@@ -108,6 +109,8 @@ masterMainLoop prefork@Prefork { pSettings = settings } = loop False
             modifyTVar' (pProcs prefork) $ \procs -> procs ++ newProcs
         return (False)
       QuitCM -> do
+        m <- readTVarIO $ pServerConfig prefork
+        maybe (return ()) (psOnQuit settings) m
         return (False)
       ChildCM -> do
         finished <- cleanupChildren cids (pProcs prefork)
