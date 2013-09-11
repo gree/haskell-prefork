@@ -29,8 +29,8 @@ data Config = Config {
 -- Worker context passed by the parent
 data Worker = Worker {
     wSocketFd :: CInt
-  , wPort :: Int
-  , wHost :: String
+  , wPort     :: Int
+  , wHost     :: String
   } deriving (Show, Read)
 
 instance WorkerContext Worker
@@ -38,7 +38,7 @@ instance WorkerContext Worker
 -- Server states
 data Server = Server {
     sServerSoc :: TVar (Maybe Socket)
-  , sProcs :: TVar [ProcessID]
+  , sProcs     :: TVar [ProcessID]
   }
 
 -- Call defaultMain or compatMain
@@ -76,10 +76,7 @@ updateServer Server { sServerSoc = socVar, sProcs = procs } Config { cHost = hos
       atomically $ writeTVar socVar (Just soc)
       return (soc)
   newPids <- replicateM workers $ forkWorkerProcess (Worker { wSocketFd = fdSocket soc, wHost = host, wPort = port })
-  oldPids <- atomically $ do
-    oldPids <- readTVar procs
-    writeTVar procs newPids
-    return (oldPids)
+  oldPids <- atomically $ swapTVar procs newPids
   forM_ oldPids $ sendSignal sigTERM
   return (newPids)
 
@@ -87,7 +84,6 @@ updateServer Server { sServerSoc = socVar, sProcs = procs } Config { cHost = hos
 cleanupChild :: Server -> Config -> ProcessID -> IO ()
 cleanupChild Server { sProcs = procs } _config pid = do
   atomically $ modifyTVar' procs $ filter (/= pid)
-  return ()
 
 -- Create a server socket with SockAddr
 listenOnAddr :: SockAddr -> IO Socket

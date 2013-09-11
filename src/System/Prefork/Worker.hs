@@ -42,5 +42,3 @@ workerMain act = do
   rawOpt <- getLine
   act $ decodeFromString rawOpt
   exitSuccess
-
-
