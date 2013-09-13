@@ -25,6 +25,7 @@ import System.Posix.Env (setEnv)
 import System.Prefork.Class
 import System.Prefork.Types
 import System.Prefork.Worker
+import System.Prefork.Util
 
 data ControlMessage = 
     TerminateCM
@@ -138,25 +139,16 @@ cleanupChildren cids procs = do
 
 setupServer :: ControlTChan -> IO ()
 setupServer chan = do
-  setHandler sigCHLD $ Catch $ do
+  setSignalHandler sigCHLD $ Catch $ do
     atomically $ writeTChan chan ChildCM
-  setHandler sigTERM $ Catch $ do
+  setSignalHandler sigTERM $ Catch $ do
     atomically $ writeTChan chan TerminateCM
-  setHandler sigINT $ Catch $ do
+  setSignalHandler sigINT $ Catch $ do
     atomically $ writeTChan chan InterruptCM
-  setHandler sigQUIT $ Catch $ do
+  setSignalHandler sigQUIT $ Catch $ do
     atomically $ writeTChan chan QuitCM
-  setHandler sigHUP $ Catch $ do
+  setSignalHandler sigHUP $ Catch $ do
     atomically $ writeTChan chan HungupCM
-  setHandler sigPIPE $ Ignore
+  setSignalHandler sigPIPE $ Ignore
   return ()
-
-setHandler :: Signal -> System.Posix.Handler -> IO ()
-setHandler sig func = void $ installHandler sig func Nothing
-
-sendSignal :: Signal -> ProcessID -> IO ()
-sendSignal sig cid = signalProcess sig cid `catch` ignore
-  where
-    ignore :: SomeException -> IO ()
-    ignore _ = return ()
 

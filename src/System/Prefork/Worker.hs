@@ -1,4 +1,6 @@
 
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module System.Prefork.Worker (
     forkWorkerProcess
   , workerMain
@@ -17,9 +19,12 @@ import System.Exit
 import System.Argv0
 import Data.Maybe
 import System.Environment (lookupEnv)
+import System.IO
+import Control.Concurrent
 
 import System.Prefork.Class
 
+preforkEnvKey :: String
 preforkEnvKey = "PREFORK"
 
 {- |
@@ -34,8 +39,9 @@ forkWorkerProcess opt = do
   let options = case rtsOptions opt of
         [] -> []
         rtsopt -> ["+RTS"] ++ rtsopt ++ ["-RTS"]
-  (jhin, _, _, ph) <- createProcess $ (proc exe (heads ++ options)) { std_in = CreatePipe }
-  hPutStrLn (fromJust jhin) $ encodeToString opt
+  (Just hIn, Just hOut, _, ph) <- createProcess $ (proc exe (heads ++ options)) { std_in = CreatePipe, std_out = CreatePipe }
+  forkIO $ hPutStr stdout =<< hGetContents hOut
+  hPutStrLn hIn $ encodeToString opt
   extractProcessID ph
 
 extractProcessID :: ProcessHandle -> IO ProcessID

@@ -5,7 +5,7 @@ module System.Prefork.Types (
     PreforkSettings(..)
   ) where
 
-import System.Posix hiding (version)
+import System.Posix (ProcessID)
 import System.Prefork.Class
 
 data PreforkSettings sc = PreforkSettings {
