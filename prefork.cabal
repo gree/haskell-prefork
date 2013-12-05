@@ -50,7 +50,7 @@ Executable prefork-sample-warp
                  , bytestring
                  , containers
                  , network
-                 , wai
+                 , wai < 2
                  , warp
                  , stm
                  , blaze-builder
