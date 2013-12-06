@@ -19,6 +19,7 @@ import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Exception
 import System.Posix hiding (version)
+import System.Exit
 import System.Environment (getArgs, lookupEnv)
 import System.Posix.Env (setEnv)
 
@@ -129,9 +130,11 @@ masterMainLoop prefork@Prefork { pSettings = settings } = loop False
 
 cleanupChildren :: [ProcessID] -> TVar [ProcessID] -> IO ([ProcessID])
 cleanupChildren cids procs = do
-  r <- mapM (getProcessStatus False False) cids
+  r <- mapM (getProcessStatus False False) cids -- WNOHANG is true, WUNTRACED is false
   let finished = catMaybes $ flip map (zip cids r) $ \x -> case x of
-                                                             (pid, Just _exitCode) -> Just pid
+                                                             (pid, Just (Exited _exitCode)) -> Just pid
+                                                             (pid, Just (Terminated _signal)) -> Just pid
+                                                             (pid, Just (Stopped _signal)) -> Nothing
                                                              _ -> Nothing
   atomically $ do
     modifyTVar' procs $ filter (\v -> v `notElem` finished)
