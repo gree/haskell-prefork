@@ -14,7 +14,11 @@ category:            System
 build-type:          Simple
 cabal-version:       >=1.8
 
-library
+Flag sample
+  Description: Build sample programs
+  Default: False
+
+Library
   exposed-modules:   System.Prefork
                    , System.Prefork.Main
                    , System.Prefork.Types
@@ -33,6 +37,10 @@ library
                    , process
 
 Executable prefork-sample-simple
+  if flag(sample)
+    Buildable: True
+  else
+    Buildable: False
   Ghc-Options:     -threaded -Wall -rtsopts
   Build-Depends:   base >=4 && <5
                  , bytestring
@@ -45,6 +53,10 @@ Executable prefork-sample-simple
   Extensions:      DeriveDataTypeable
 
 Executable prefork-sample-warp
+  if flag(sample)
+    Buildable: True
+  else
+    Buildable: False
   Ghc-Options:     -threaded -Wall -rtsopts
   Build-Depends:   base >=4 && <5
                  , bytestring
