@@ -3,6 +3,7 @@
 
 module System.Prefork.Worker (
     forkWorkerProcess
+  , forkWorkerProcessWithArgs
   , workerMain
   , preforkEnvKey
   ) where
@@ -29,25 +30,30 @@ preforkEnvKey = "PREFORK"
 
 {- |
 -}
-forkWorkerProcess :: (WorkerContext so) => so -> IO ProcessID
-forkWorkerProcess opt = do
+forkWorkerProcessWithArgs :: (WorkerContext so) => so -> [String] -> IO ProcessID
+forkWorkerProcessWithArgs opt args = do
   exe <- liftM encodeString getArgv0
   mPrefork <- lookupEnv preforkEnvKey
   let heads = case mPrefork of
         Just _ -> []
         Nothing -> ["server"]
   let options = case rtsOptions opt of
-        [] -> []
-        rtsopt -> ["+RTS"] ++ rtsopt ++ ["-RTS"]
+        [] -> args
+        rtsopt -> ["+RTS"] ++ rtsopt ++ ["-RTS"] ++ args
   (Just hIn, Just hOut, _, ph) <- createProcess $ (proc exe (heads ++ options)) { std_in = CreatePipe, std_out = CreatePipe }
   forkIO $ hPutStr stdout =<< hGetContents hOut
   hPutStrLn hIn $ encodeToString opt
   extractProcessID ph
+  where
+    extractProcessID :: ProcessHandle -> IO ProcessID
+    extractProcessID h = withProcessHandle h $ \x -> case x of
+      OpenHandle pid -> return (x, pid)
+      _ -> throwIO $ userError "Unable to retrieve child process ID."
 
-extractProcessID :: ProcessHandle -> IO ProcessID
-extractProcessID h = withProcessHandle h $ \x -> case x of
-  OpenHandle pid -> return (x, pid)
-  _ -> throwIO $ userError "Unable to retrieve child process ID."
+{- |
+-}
+forkWorkerProcess :: (WorkerContext so) => so -> IO ProcessID
+forkWorkerProcess opt = forkWorkerProcessWithArgs opt []
 
 {- |
 -}
