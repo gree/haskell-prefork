@@ -63,7 +63,7 @@ Executable prefork-sample-warp
                  , containers
                  , network
                  , wai < 2
-                 , warp
+                 , warp < 2
                  , stm
                  , blaze-builder
                  , http-types
