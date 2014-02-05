@@ -1,6 +1,4 @@
 
-{-# LANGUAGE ScopedTypeVariables #-}
-
 import System.Prefork
 import System.Posix
 

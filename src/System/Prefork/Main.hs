@@ -1,27 +1,19 @@
 
-{-# LANGUAGE NoMonomorphismRestriction #-}
-
 {- | This is a library for servers based on worker process model.
 -}
+
 module System.Prefork.Main (
     defaultMain
   , compatMain
   , defaultSettings
   ) where
 
-import Prelude hiding (catch)
-import Data.List
-import Data.Map (Map)
-import Data.Maybe
-import qualified Data.Map as M
-import Control.Monad
-import Control.Concurrent
+import Data.Maybe (listToMaybe, catMaybes)
+import Control.Monad (unless, forM_)
 import Control.Concurrent.STM
-import Control.Exception
-import System.Posix hiding (version)
-import System.Exit
-import System.Environment (getArgs, lookupEnv)
+import System.Posix
 import System.Posix.Env (setEnv)
+import System.Environment (getArgs, lookupEnv)
 
 import System.Prefork.Class
 import System.Prefork.Types
@@ -36,16 +28,14 @@ data ControlMessage =
   | ChildCM
   deriving (Eq, Show, Read)
 
-type ControlTChan   = TChan ControlMessage
-
 data Prefork sc = Prefork {
     pServerConfig :: !(TVar (Maybe sc))
-  , pCtrlChan     :: !ControlTChan
+  , pCtrlChan     :: !(TChan ControlMessage)
   , pProcs        :: !(TVar [ProcessID])
   , pSettings     :: !(PreforkSettings sc)
   }
 
-defaultMain :: (WorkerContext so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
+defaultMain :: (WorkerContext w) => PreforkSettings sc -> (w -> IO ()) -> IO ()
 defaultMain settings workerAction = do
   mPrefork <- lookupEnv preforkEnvKey
   case mPrefork of
@@ -54,7 +44,7 @@ defaultMain settings workerAction = do
       setEnv preforkEnvKey "server" True
       masterMain settings
 
-compatMain :: (WorkerContext so) => PreforkSettings sc -> (so -> IO ()) -> IO ()
+compatMain :: (WorkerContext w) => PreforkSettings sc -> (w -> IO ()) -> IO ()
 compatMain settings workerAction = do
   args <- getArgs
   case (listToMaybe args) of 
@@ -65,27 +55,27 @@ masterMain :: PreforkSettings sc -> IO ()
 masterMain settings = do
   ctrlChan  <- newTChanIO
   procs     <- newTVarIO []
-  mso       <- psUpdateConfig settings
-  soptVar   <- newTVarIO mso
-  let prefork = Prefork soptVar ctrlChan procs settings
+  mConfig   <- psUpdateConfig settings
+  soptVar   <- newTVarIO mConfig
   setupServer ctrlChan
   atomically $ writeTChan ctrlChan HungupCM  
-  masterMainLoop prefork
+  masterMainLoop (Prefork soptVar ctrlChan procs settings)
 
 defaultSettings :: PreforkSettings sc
 defaultSettings = PreforkSettings {
-    psOnTerminate      = \_ -> mapM_ (sendSignal sigTERM)
-  , psOnInterrupt      = \_ -> mapM_ (sendSignal sigINT)
-  , psOnQuit           = \_ -> return ()
-  , psOnChildFinished  = \_ -> return ([])
-  , psUpdateServer     = \_ -> return ([])
-  , psCleanupChild     = \_ pid -> return ()
+    psOnTerminate      = \_config -> mapM_ (sendSignal sigTERM)
+  , psOnInterrupt      = \_config -> mapM_ (sendSignal sigINT)
+  , psOnQuit           = \_config -> return ()
+  , psOnChildFinished  = \_config -> return ([])
+  , psUpdateServer     = \_config -> return ([])
+  , psCleanupChild     = \_config _pid -> return ()
   , psUpdateConfig     = return (Nothing)
   }
 
 masterMainLoop :: Prefork sc -> IO ()
 masterMainLoop prefork@Prefork { pSettings = settings } = loop False
   where
+    loop :: Bool -> IO ()
     loop finishing = do
       (msg, cids) <- atomically $ do
         msg <- readTChan $ pCtrlChan prefork
@@ -95,26 +85,27 @@ masterMainLoop prefork@Prefork { pSettings = settings } = loop False
       childIds <- readTVarIO (pProcs prefork)
       unless ((finishing || finRequested) && null childIds) $ loop (finishing || finRequested)
 
+    dispatch :: ControlMessage -> [CPid] -> Bool -> IO (Bool)
     dispatch msg cids finishing = case msg of
       TerminateCM -> do
         m <- readTVarIO $ pServerConfig prefork
-        maybe (return ()) (flip (psOnTerminate settings) cids) m
+        whenJust m $ flip (psOnTerminate settings) cids
         return (True)
       InterruptCM -> do
         m <- readTVarIO $ pServerConfig prefork
-        maybe (return ()) (flip (psOnInterrupt settings) cids) m
+        whenJust m $ flip (psOnInterrupt settings) cids
         return (True)
       HungupCM -> do
         mConfig <- psUpdateConfig (pSettings prefork)
-        flip (maybe (return ())) mConfig $ \config -> do
+        whenJust mConfig $ \config -> do
           newProcs <- (psUpdateServer (pSettings prefork)) config
           atomically $ do
-            writeTVar (pServerConfig prefork) mConfig
+            writeTVar (pServerConfig prefork) (Just config)
             modifyTVar' (pProcs prefork) $ (++) newProcs
         return (False)
       QuitCM -> do
         m <- readTVarIO $ pServerConfig prefork
-        maybe (return ()) (psOnQuit settings) m
+        whenJust m $ psOnQuit settings
         return (False)
       ChildCM -> do
         finished <- cleanupChildren cids (pProcs prefork)
@@ -128,30 +119,30 @@ masterMainLoop prefork@Prefork { pSettings = settings } = loop False
           Nothing -> return ()
         return (False)
 
+whenJust :: Monad m => Maybe a -> (a -> m ()) -> m ()
+whenJust mg f = maybe (return ()) f mg
+
 cleanupChildren :: [ProcessID] -> TVar [ProcessID] -> IO ([ProcessID])
 cleanupChildren cids procs = do
   r <- mapM (getProcessStatus False False) cids -- WNOHANG is true, WUNTRACED is false
-  let finished = catMaybes $ flip map (zip cids r) $ \x -> case x of
-                                                             (pid, Just (Exited _exitCode)) -> Just pid
-                                                             (pid, Just (Terminated _signal)) -> Just pid
-                                                             (pid, Just (Stopped _signal)) -> Nothing
-                                                             _ -> Nothing
-  atomically $ do
-    modifyTVar' procs $ filter (\v -> v `notElem` finished)
+  let finished = catMaybes $ flip map (zip cids r) $ checkFinished
+  atomically $ modifyTVar' procs $ filter (flip notElem finished)
   return (finished)
+  where
+    checkFinished (pid, x) = case x of
+      Just (Exited _exitCode) -> Just pid
+      Just (Terminated _signal) -> Just pid
+      Just (Stopped _signal) -> Nothing
+      _ -> Nothing
 
-setupServer :: ControlTChan -> IO ()
+setupServer :: TChan ControlMessage -> IO ()
 setupServer chan = do
-  setSignalHandler sigCHLD $ Catch $ do
-    atomically $ writeTChan chan ChildCM
-  setSignalHandler sigTERM $ Catch $ do
-    atomically $ writeTChan chan TerminateCM
-  setSignalHandler sigINT $ Catch $ do
-    atomically $ writeTChan chan InterruptCM
-  setSignalHandler sigQUIT $ Catch $ do
-    atomically $ writeTChan chan QuitCM
-  setSignalHandler sigHUP $ Catch $ do
-    atomically $ writeTChan chan HungupCM
+  let delegate = \sig msg -> setSignalHandler sig $ Catch $ atomically $ writeTChan chan msg
+  delegate sigCHLD ChildCM
+  delegate sigTERM TerminateCM
+  delegate sigINT  InterruptCM
+  delegate sigQUIT QuitCM
+  delegate sigHUP  HungupCM
   setSignalHandler sigPIPE $ Ignore
   return ()
 

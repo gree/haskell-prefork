@@ -1,6 +1,4 @@
 
-{-# LANGUAGE ScopedTypeVariables #-}
-
 import System.Prefork
 import System.Posix
 import System.Exit
@@ -11,13 +9,12 @@ data Worker = Worker1 String | Worker2 String deriving (Show, Read, Eq)
 instance WorkerContext Worker
 
 main :: IO ()
-main = do
-  defaultMain defaultSettings {
-      psUpdateConfig = updateConfig
-    , psUpdateServer = updateServer
-    } $ \w -> case w of
-    Worker1 msg -> putStrLn msg >> exitSuccess
-    Worker2 msg -> putStrLn msg >> exitSuccess
+main = defaultMain defaultSettings {
+    psUpdateConfig = updateConfig
+  , psUpdateServer = updateServer
+  } $ \w -> case w of
+  Worker1 msg -> putStrLn msg >> exitSuccess
+  Worker2 msg -> putStrLn msg >> exitSuccess
 
 updateConfig :: IO (Maybe ServerConfig)
 updateConfig = do

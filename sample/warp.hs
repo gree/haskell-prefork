@@ -1,6 +1,5 @@
 
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 -- This is a simple web server based on Warp
 
@@ -41,7 +40,7 @@ data Server = Server {
   , sProcs     :: TVar [ProcessID]
   }
 
--- Call defaultMain or compatMain
+-- Call defaultMain
 main :: IO ()
 main = do
   s <- Server <$> newTVarIO Nothing <*> newTVarIO []

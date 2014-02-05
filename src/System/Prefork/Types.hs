@@ -1,6 +1,4 @@
 
-{-# LANGUAGE Rank2Types #-}
-
 module System.Prefork.Types (
     PreforkSettings(..)
   ) where
