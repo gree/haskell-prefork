@@ -9,7 +9,8 @@ module System.Prefork.Main (
   ) where
 
 import Data.Maybe (listToMaybe, catMaybes)
-import Control.Monad (unless, forM_)
+import Control.Exception (SomeException, catch)
+import Control.Monad (unless, forM_, void)
 import Control.Concurrent.STM
 import System.Posix
 import System.Posix.Env (setEnv)
@@ -145,4 +146,12 @@ setupServer chan = do
   delegate sigHUP  HungupCM
   setSignalHandler sigPIPE $ Ignore
   return ()
+  where
+    setSignalHandler :: Signal -> System.Posix.Handler -> IO ()
+    setSignalHandler sig func = void $ installHandler sig func Nothing
 
+sendSignal :: Signal -> ProcessID -> IO ()
+sendSignal sig cid = signalProcess sig cid `catch` ignore
+  where
+    ignore :: SomeException -> IO ()
+    ignore _ = return ()
