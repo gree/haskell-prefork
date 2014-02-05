@@ -24,7 +24,6 @@ Library
                    , System.Prefork.Types
                    , System.Prefork.Class
                    , System.Prefork.Worker
-                   , System.Prefork.Util
   -- other-modules:       
   hs-source-dirs:    src
   build-depends:     base ==4.6.*

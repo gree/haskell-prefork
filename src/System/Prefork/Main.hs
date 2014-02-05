@@ -19,7 +19,6 @@ import System.Environment (getArgs, lookupEnv)
 import System.Prefork.Class
 import System.Prefork.Types
 import System.Prefork.Worker
-import System.Prefork.Util
 
 data ControlMessage = 
     TerminateCM
