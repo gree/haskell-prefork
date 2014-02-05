@@ -51,7 +51,7 @@ Executable prefork-sample-simple
   Main-is:         simple.hs
   Extensions:      DeriveDataTypeable
 
-Executable prefork-sample-verious-workers
+Executable prefork-sample-various-workers
   if flag(sample)
     Buildable: True
   else
@@ -64,7 +64,7 @@ Executable prefork-sample-verious-workers
                  , unix
                  , prefork
   Hs-source-dirs:  sample
-  Main-is:         verious-workers.hs
+  Main-is:         various-workers.hs
   Extensions:      DeriveDataTypeable
 
 Executable prefork-sample-warp
