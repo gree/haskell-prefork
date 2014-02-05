@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                prefork
-version:             0.0.2
+version:             0.0.3
 synopsis:            Prefork library
 -- description:         
 license:             OtherLicense
