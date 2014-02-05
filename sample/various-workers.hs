@@ -1,7 +1,7 @@
 
 import System.Prefork
 import System.Posix
-import System.Exit
+import System.Exit (exitSuccess)
 
 data ServerConfig = ServerConfig
 data Worker = Worker1 String | Worker2 String deriving (Show, Read, Eq)
@@ -12,6 +12,9 @@ main :: IO ()
 main = defaultMain defaultSettings {
     psUpdateConfig = updateConfig
   , psUpdateServer = updateServer
+  , psOnStart      = \_ -> do
+      pid <- getProcessID
+      putStrLn $ "Please send SIGHUP to " ++ show pid ++ " to relaunch workers"
   } $ \w -> case w of
   Worker1 msg -> putStrLn msg >> exitSuccess
   Worker2 msg -> putStrLn msg >> exitSuccess

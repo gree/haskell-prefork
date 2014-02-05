@@ -11,6 +11,8 @@ data PreforkSettings sc = PreforkSettings {
   , psOnInterrupt     :: sc -> [ProcessID] -> IO ()
   , psOnQuit          :: sc -> IO ()
   , psOnChildFinished :: sc -> IO ([ProcessID])
+  , psOnStart         :: Maybe sc -> IO ()
+  , psOnFinish        :: Maybe sc -> IO ()
   , psUpdateServer    :: sc -> IO ([ProcessID])
   , psCleanupChild    :: sc -> ProcessID -> IO ()
   , psUpdateConfig    :: IO (Maybe sc)

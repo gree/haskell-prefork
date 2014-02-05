@@ -57,9 +57,13 @@ masterMain settings = do
   procs     <- newTVarIO []
   mConfig   <- psUpdateConfig settings
   soptVar   <- newTVarIO mConfig
-  setupServer ctrlChan
   atomically $ writeTChan ctrlChan HungupCM  
+  setupServer ctrlChan
+  (psOnStart settings) mConfig
   masterMainLoop (Prefork soptVar ctrlChan procs settings)
+  mConfig' <- readTVarIO soptVar
+  (psOnFinish settings) mConfig'
+  return ()
 
 defaultSettings :: PreforkSettings sc
 defaultSettings = PreforkSettings {
@@ -67,6 +71,8 @@ defaultSettings = PreforkSettings {
   , psOnInterrupt      = \_config -> mapM_ (sendSignal sigINT)
   , psOnQuit           = \_config -> return ()
   , psOnChildFinished  = \_config -> return ([])
+  , psOnStart          = \_mConfig -> return ()
+  , psOnFinish         = \_mConfig -> return ()
   , psUpdateServer     = \_config -> return ([])
   , psCleanupChild     = \_config _pid -> return ()
   , psUpdateConfig     = return (Nothing)

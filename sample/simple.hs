@@ -1,6 +1,7 @@
 
 import System.Prefork
 import System.Posix
+import System.Exit (exitSuccess)
 
 data ServerConfig = ServerConfig
 data Worker = Worker1 String deriving (Show, Read)
@@ -8,13 +9,14 @@ data Worker = Worker1 String deriving (Show, Read)
 instance WorkerContext Worker
 
 main :: IO ()
-main = do
-  defaultMain defaultSettings {
-      psUpdateConfig = updateConfig
-    , psUpdateServer = updateServer
-    } $ \so -> case so of
-    Worker1 msg -> do
-      print msg
+main = defaultMain defaultSettings {
+    psUpdateConfig = updateConfig
+  , psUpdateServer = updateServer
+  , psOnStart      = \_ -> do
+      pid <- getProcessID
+      putStrLn $ "Please send SIGHUP to " ++ show pid ++ " to relaunch a worker"
+  } $ \so -> case so of
+  Worker1 msg -> print msg >> exitSuccess
 
 updateConfig :: IO (Maybe ServerConfig)
 updateConfig = do
