@@ -32,17 +32,17 @@ forkWorkerProcessWithArgs :: (WorkerContext so) => so -> [String] -> IO ProcessI
 forkWorkerProcessWithArgs opt args = do
   exe <- liftM encodeString getArgv0
   mPrefork <- lookupEnv preforkEnvKey
-  let heads = case mPrefork of
-        Just _ -> []
-        Nothing -> ["server"]
-  let options = case rtsOptions opt of
-        [] -> args
-        rtsopt -> ["+RTS"] ++ rtsopt ++ ["-RTS"] ++ args
+  let heads = maybe ["server"] (const []) mPrefork -- for compatiblity (will be removed in the next release)
   (Just hIn, Just hOut, _, ph) <- createProcess $ (proc exe (heads ++ options)) { std_in = CreatePipe, std_out = CreatePipe }
   forkIO $ hPutStr stdout =<< hGetContents hOut
   hPutStrLn hIn $ encodeToString opt
   extractProcessID ph
   where
+    options :: [String]
+    options = case rtsOptions opt of
+      [] -> args
+      rtsopts -> args ++ ["+RTS"] ++ rtsopts ++ ["-RTS"]
+
     extractProcessID :: ProcessHandle -> IO ProcessID
     extractProcessID h = withProcessHandle h $ \x -> case x of
       OpenHandle pid -> return (x, pid)
