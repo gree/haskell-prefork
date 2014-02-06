@@ -21,6 +21,7 @@ Flag sample
 Library
   exposed-modules:   System.Prefork
                    , System.Prefork.Main
+                   , System.Prefork.Main.Internal
                    , System.Prefork.Types
                    , System.Prefork.Class
                    , System.Prefork.Worker
