@@ -5,11 +5,9 @@
 module System.Prefork.Main (
     defaultMain
   , compatMain
-  , defaultSettings
   ) where
 
 import Data.Maybe (listToMaybe, catMaybes)
-import Control.Exception (SomeException, catch)
 import Control.Monad (unless, forM_, void)
 import Control.Concurrent.STM
 import System.Posix
@@ -64,19 +62,6 @@ masterMain settings = do
   mConfig' <- readTVarIO soptVar
   (psOnFinish settings) mConfig'
   return ()
-
-defaultSettings :: PreforkSettings sc
-defaultSettings = PreforkSettings {
-    psOnTerminate      = \_config -> mapM_ (sendSignal sigTERM)
-  , psOnInterrupt      = \_config -> mapM_ (sendSignal sigINT)
-  , psOnQuit           = \_config -> return ()
-  , psOnChildFinished  = \_config -> return ([])
-  , psOnStart          = \_mConfig -> return ()
-  , psOnFinish         = \_mConfig -> return ()
-  , psUpdateServer     = \_config -> return ([])
-  , psCleanupChild     = \_config _pid -> return ()
-  , psUpdateConfig     = return (Nothing)
-  }
 
 masterMainLoop :: Prefork sc -> IO ()
 masterMainLoop prefork@Prefork { pSettings = settings } = loop False
@@ -155,8 +140,3 @@ setupServer chan = do
     setSignalHandler :: Signal -> System.Posix.Handler -> IO ()
     setSignalHandler sig func = void $ installHandler sig func Nothing
 
-sendSignal :: Signal -> ProcessID -> IO ()
-sendSignal sig cid = signalProcess sig cid `catch` ignore
-  where
-    ignore :: SomeException -> IO ()
-    ignore _ = return ()
