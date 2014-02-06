@@ -105,7 +105,7 @@ main = do
 updateConfig :: Server -> IO (Maybe Config)
 updateConfig s = do
   let workers = map (\i -> Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = "localhost" }) [1..(sWorkers s)]
-  atomically $ writeTVar (prWorkers $ sResource s) $ S.fromList workers
+  updateWorkerSet (sResource s) workers
   return (Just $ Config Warp.defaultSettings { Warp.settingsPort = fromIntegral (sPort s) } (sPort s) "localhost")
 
 -- Create a server socket with SockAddr

@@ -3,6 +3,7 @@ module System.Prefork.Types (
     PreforkSettings(..)
   , PreforkResource(..)
   , makePreforkResource
+  , updateWorkerSet
   ) where
 
 import qualified Data.Set as S
@@ -32,3 +33,6 @@ data PreforkResource w = PreforkResource {
 makePreforkResource :: (Ord w, Eq w) => [w] -> IO (PreforkResource w)
 makePreforkResource workers = PreforkResource <$> newTVarIO M.empty
                                               <*> newTVarIO (S.fromList workers)
+
+updateWorkerSet :: (Ord w, Eq w) => PreforkResource w -> [w] -> IO ()
+updateWorkerSet resource workers = atomically $ writeTVar (prWorkers resource) $ S.fromList workers
