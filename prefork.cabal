@@ -86,6 +86,7 @@ Executable prefork-sample-warp
                  , http-types
                  , unix
                  , prefork
+                 , cmdargs
   Hs-source-dirs:  sample
   Main-is:         warp.hs
   Extensions:      DeriveDataTypeable

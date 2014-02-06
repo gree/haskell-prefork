@@ -16,6 +16,7 @@ import qualified Network.Wai.Handler.Warp as Warp
 import Network.HTTP.Types
 import System.Posix
 import System.Prefork
+import System.Console.CmdArgs
 
 -- Application specific configuration
 data Config = Config {
@@ -28,53 +29,71 @@ data Config = Config {
 -- Worker context passed by the parent
 data Worker = Worker {
     wSocketFd :: CInt
-  , wPort     :: Int
   , wHost     :: String
   } deriving (Show, Read)
 
-instance WorkerContext Worker
+instance WorkerContext Worker where
+  rtsOptions _ = ["-N4"]
 
 -- Server states
 data Server = Server {
     sServerSoc :: TVar (Maybe Socket)
   , sProcs     :: TVar [ProcessID]
+  , sPort      :: Int
   }
+
+-- Command line options
+data Warp = Warp {
+    port      :: Int
+  , extraArgs :: [String]
+  } deriving (Show, Data, Typeable, Eq)
+
+cmdLineOptions :: Warp
+cmdLineOptions = Warp {
+      port      = 11111 &= name "p" &= help "Port number" &= typ "PORT"
+    , extraArgs = def &= args
+    } &=
+    help "Preforking Warp Server Sample" &=
+    summary ("Preforking Warp Server Sample, (C) GREE, Inc") &=
+    details ["Web Server"]
 
 -- Call defaultMain
 main :: IO ()
 main = do
-  s <- Server <$> newTVarIO Nothing <*> newTVarIO []
+  option <- cmdArgs cmdLineOptions
+  s <- Server <$> newTVarIO Nothing <*> newTVarIO [] <*> pure (port option)
   let settings = defaultSettings {
-      psUpdateConfig = updateConfig
+      psUpdateConfig = updateConfig s
     , psUpdateServer = updateServer s
     , psCleanupChild = cleanupChild s
     }
-  defaultMain settings $ \(Worker { wSocketFd = fd, wPort = port, wHost = _host }) -> do
+  defaultMain settings $ \(Worker { wSocketFd = fd, wHost = _host }) -> do
     -- worker action
     soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
-    Warp.runSettingsSocket Warp.defaultSettings {
-        Warp.settingsPort = fromIntegral port
-      } soc $ serverApp
+    mConfig <- updateConfig s
+    case mConfig of
+      Just config -> Warp.runSettingsSocket (cWarpSettings config) soc $ serverApp
+      Nothing -> return ()
   where
     serverApp :: Application
     serverApp _ = return $ ResponseBuilder status200 [] $ fromString "hello"
 
 -- Load settings via IO
-updateConfig :: IO (Maybe Config)
-updateConfig = return (Just $ Config Warp.defaultSettings 11111 "localhost" 10)
+updateConfig :: Server -> IO (Maybe Config)
+updateConfig s = return (Just $ Config Warp.defaultSettings { Warp.settingsPort = fromIntegral (sPort s) } (sPort s) "localhost" 10)
 
 -- Update the entire state of a server
 updateServer :: Server -> Config -> IO ([ProcessID])
-updateServer Server { sServerSoc = socVar, sProcs = procs } Config { cHost = host, cPort = port, cWorkers = workers } = do
+updateServer Server { sServerSoc = socVar, sProcs = procs } Config { cHost = host, cPort = listenPort, cWorkers = workers } = do
   msoc <- readTVarIO socVar
   soc <- case msoc of
     Just soc -> return (soc)
     Nothing -> do
       hentry <- getHostByName host
-      soc <- listenOnAddr (SockAddrInet (fromIntegral port) (head $ hostAddresses hentry))
+      soc <- listenOnAddr (SockAddrInet (fromIntegral listenPort) (head $ hostAddresses hentry))
       atomically $ writeTVar socVar (Just soc)
       return (soc)
-  newPids <- replicateM workers $ forkWorkerProcess (Worker { wSocketFd = fdSocket soc, wHost = host, wPort = port })
+  newPids <- replicateM workers $ forkWorkerProcess (Worker { wSocketFd = fdSocket soc, wHost = host })
   oldPids <- atomically $ swapTVar procs newPids
   forM_ oldPids $ sendSignal sigTERM
   return (newPids)
