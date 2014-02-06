@@ -2,6 +2,7 @@
 module System.Prefork.Main.Internal (
     compatMain
   , masterMain
+  , workerMain
   ) where
 
 import Data.Maybe (listToMaybe, catMaybes)
@@ -9,6 +10,7 @@ import Control.Monad (unless, forM_, void)
 import Control.Concurrent.STM
 import System.Posix
 import System.Environment (getArgs)
+import System.Exit (exitSuccess)
 
 import System.Prefork.Class
 import System.Prefork.Types
@@ -35,6 +37,12 @@ compatMain settings workerAction = do
   case (listToMaybe args) of 
     Just x | x == "server" -> workerMain workerAction
     _ -> masterMain settings
+
+workerMain :: (WorkerContext so) => (so -> IO ()) -> IO ()
+workerMain act = do
+  rawOpt <- getLine
+  act $ decodeFromString rawOpt
+  exitSuccess
 
 masterMain :: PreforkSettings sc -> IO ()
 masterMain settings = do

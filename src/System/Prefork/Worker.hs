@@ -4,7 +4,6 @@
 module System.Prefork.Worker (
     forkWorkerProcess
   , forkWorkerProcessWithArgs
-  , workerMain
   , preforkEnvKey
   ) where
 
@@ -16,7 +15,6 @@ import Filesystem.Path.CurrentOS(encodeString)
 import System.Posix hiding (version)
 import Foreign.C.Types
 import System.IO (hPutStrLn)
-import System.Exit
 import System.Argv0
 import Data.Maybe
 import System.Environment (lookupEnv)
@@ -55,10 +53,3 @@ forkWorkerProcessWithArgs opt args = do
 forkWorkerProcess :: (WorkerContext so) => so -> IO ProcessID
 forkWorkerProcess opt = forkWorkerProcessWithArgs opt []
 
-{- |
--}
-workerMain :: (WorkerContext so) => (so -> IO ()) -> IO ()
-workerMain act = do
-  rawOpt <- getLine
-  act $ decodeFromString rawOpt
-  exitSuccess
