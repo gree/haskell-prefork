@@ -10,7 +10,6 @@ import Network.Socket
 import Control.Applicative
 import Control.Exception
 import Control.Concurrent.STM
-import Control.Monad
 import Network.Wai
 import qualified Network.Wai.Handler.Warp as Warp
 import Network.HTTP.Types
@@ -18,8 +17,6 @@ import System.Posix
 import System.Prefork
 import System.Console.CmdArgs
 import qualified Data.Set as S
-import qualified Data.Map as M
-import Data.List
 
 -- Application specific configuration
 data Config = Config {
@@ -31,6 +28,7 @@ data Config = Config {
 -- Worker context passed by the parent
 data Worker = Worker {
     wId       :: Int
+  , wPort     :: Int
   , wSocketFd :: CInt
   , wHost     :: String
   } deriving (Show, Read)
@@ -74,17 +72,12 @@ cmdLineOptions = Warp {
 main :: IO ()
 main = do
   option <- cmdArgs cmdLineOptions
-  s <- Server <$> makePreforkResource []
+  resource <- makePreforkResource []
+  s <- Server <$> pure resource
               <*> newTVarIO Nothing
               <*> pure (port option)
               <*> pure (workers option)
-  let settings = defaultSettings {
-      psUpdateConfig = updateConfig s
-    , psUpdateServer = updateServer s
-    , psCleanupChild = cleanupChild s
-    , psOnChildFinished = relaunchWorkers s
-    }
-  defaultMain settings $ \(Worker { wSocketFd = fd, wHost = _host }) -> do
+  defaultMain ((relaunchSettings resource (fork s)) { psUpdateConfig = updateConfig s }) $ \(Worker { wSocketFd = fd, wHost = _host }) -> do
     -- worker action
     soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
     mConfig <- updateConfig s
@@ -92,55 +85,28 @@ main = do
       Just config -> Warp.runSettingsSocket (cWarpSettings config) soc $ serverApp
       Nothing -> return ()
   where
+    fork :: Server -> Worker -> IO (ProcessID)
+    fork Server { sServerSoc = socVar } w = do
+      msoc <- readTVarIO socVar
+      soc <- case msoc of
+        Just soc -> return (soc)
+        Nothing -> do
+          hentry <- getHostByName (wHost w)
+          soc <- listenOnAddr (SockAddrInet (fromIntegral (wPort w)) (head $ hostAddresses hentry))
+          atomically $ writeTVar socVar (Just soc)
+          return (soc)
+      let w' = w { wSocketFd = fdSocket soc }
+      forkWorkerProcessWithArgs (w') ["id=" ++ show (wId w') ]
+
     serverApp :: Application
     serverApp _ = return $ ResponseBuilder status200 [] $ fromString "hello"
 
 -- Load settings via IO
 updateConfig :: Server -> IO (Maybe Config)
 updateConfig s = do
-  let workers = map (\i -> Worker { wId = i, wSocketFd = 0, wHost = "" }) [1..(sWorkers s)]
+  let workers = map (\i -> Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = "localhost" }) [1..(sWorkers s)]
   atomically $ writeTVar (prWorkers $ sResource s) $ S.fromList workers
   return (Just $ Config Warp.defaultSettings { Warp.settingsPort = fromIntegral (sPort s) } (sPort s) "localhost")
-
--- Update the entire state of a server
-updateServer :: Server -> Config -> IO ([ProcessID])
-updateServer Server { sServerSoc = socVar, sResource = resource } Config { cHost = host, cPort = listenPort } = do
-  let procs = prProcs resource
-  msoc <- readTVarIO socVar
-  soc <- case msoc of
-    Just soc -> return (soc)
-    Nothing -> do
-      hentry <- getHostByName host
-      soc <- listenOnAddr (SockAddrInet (fromIntegral listenPort) (head $ hostAddresses hentry))
-      atomically $ writeTVar socVar (Just soc)
-      return (soc)
-  workers <- readTVarIO (prWorkers resource)
-  newPids <- forM (S.toList workers) $ \w -> do
-    let w' = w { wSocketFd = fdSocket soc, wHost = host }
-    pid <- forkWorkerProcessWithArgs (w') ["id=" ++ show (wId w') ]
-    return (pid, w)
-  oldPids <- atomically $ swapTVar procs (M.fromList newPids)
-  forM_ (M.keys oldPids) $ sendSignal sigTERM
-  return (map fst newPids)
-
--- Clean up application specific resources associated to a child process
-cleanupChild :: Server -> Config -> ProcessID -> IO ()
-cleanupChild Server { sResource = resource } _config pid = do
-  let procs = prProcs resource
-  atomically $ modifyTVar' procs $ M.delete pid
-
--- Relaunch workers after some of them terminate
-relaunchWorkers :: Server -> Config -> IO ([ProcessID])
-relaunchWorkers Server { sResource = resource } _config = do
-  let procs = prProcs resource
-  let workers = prWorkers resource
-  live <- readTVarIO procs
-  workers <- readTVarIO workers
-  newPids <- fmap M.fromList $ forM (S.toList workers \\ M.elems live) $ \w -> do
-    pid <- forkWorkerProcessWithArgs w ["id=" ++ show (wId w) ]
-    return (pid, w)
-  atomically $ modifyTVar' procs $ M.union newPids
-  return (M.keys newPids)
 
 -- Create a server socket with SockAddr
 listenOnAddr :: SockAddr -> IO Socket
