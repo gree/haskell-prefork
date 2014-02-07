@@ -63,7 +63,6 @@ cmdLineOptions = Warp {
     summary ("Preforking Warp Server Sample, (C) GREE, Inc") &=
     details ["Web Server"]
 
--- Call defaultMain
 main :: IO ()
 main = do
   option <- cmdArgs cmdLineOptions
@@ -82,8 +81,11 @@ main = do
     update s resource = do
       updateWorkerSet resource $ flip map [1..(sWorkers s)] $ \i ->
         Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = "localhost" }
-      return (Just $ Config Warp.defaultSettings { Warp.settingsPort = fromIntegral (sPort s) })
-    
+      updateConfig s
+
+    updateConfig :: Server -> IO (Maybe Config)
+    updateConfig s = return (Just $ Config Warp.defaultSettings { Warp.settingsPort = fromIntegral (sPort s) })
+
     fork :: Server -> Worker -> IO (ProcessID)
     fork Server { sServerSoc = socVar } w = do
       msoc <- readTVarIO socVar
@@ -96,9 +98,10 @@ main = do
           return (soc)
       let w' = w { wSocketFd = fdSocket soc }
       forkWorkerProcessWithArgs (w') ["id=" ++ show (wId w') ]
-    
-    serverApp :: Application
-    serverApp _ = return $ ResponseBuilder status200 [] $ fromString "hello"
+
+-- Web application
+serverApp :: Application
+serverApp _ = return $ ResponseBuilder status200 [] $ fromString "hello"
 
 -- Create a server socket with SockAddr
 listenOnAddr :: SockAddr -> IO Socket
