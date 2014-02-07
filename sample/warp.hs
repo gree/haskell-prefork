@@ -7,7 +7,6 @@ import Blaze.ByteString.Builder.Char.Utf8
 import Foreign.C.Types
 import Network.BSD
 import Network.Socket
-import Control.Applicative
 import Control.Exception
 import Control.Concurrent.STM
 import Network.Wai
@@ -16,13 +15,10 @@ import Network.HTTP.Types
 import System.Posix
 import System.Prefork
 import System.Console.CmdArgs
-import qualified Data.Set as S
 
 -- Application specific configuration
 data Config = Config {
     cWarpSettings :: Warp.Settings
-  , cPort         :: Int
-  , cHost         :: String
   }
 
 -- Worker context passed by the parent
@@ -45,8 +41,7 @@ instance Eq Worker where
 
 -- Server states
 data Server = Server {
-    sResource  :: PreforkResource Worker
-  , sServerSoc :: TVar (Maybe Socket)
+    sServerSoc :: TVar (Maybe Socket)
   , sPort      :: Int
   , sWorkers   :: Int
   }
@@ -73,18 +68,22 @@ main :: IO ()
 main = do
   option <- cmdArgs cmdLineOptions
   resource <- makePreforkResource []
-  s <- Server <$> pure resource
-              <*> newTVarIO Nothing
-              <*> pure (port option)
-              <*> pure (workers option)
-  defaultMain ((relaunchSettings resource (fork s)) { psUpdateConfig = updateConfig s }) $ \(Worker { wSocketFd = fd, wHost = _host }) -> do
+  mSoc <- newTVarIO Nothing
+  let s = Server mSoc (port option) (workers option)
+  defaultMain (relaunchSettings resource (update s) (fork s)) $ \(Worker { wSocketFd = fd, wHost = _host }) -> do
     -- worker action
     soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
-    mConfig <- updateConfig s
+    mConfig <- update s resource
     case mConfig of
       Just config -> Warp.runSettingsSocket (cWarpSettings config) soc $ serverApp
       Nothing -> return ()
   where
+    update :: Server -> PreforkResource Worker -> IO (Maybe Config)
+    update s resource = do
+      updateWorkerSet resource $ flip map [1..(sWorkers s)] $ \i ->
+        Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = "localhost" }
+      return (Just $ Config Warp.defaultSettings { Warp.settingsPort = fromIntegral (sPort s) })
+    
     fork :: Server -> Worker -> IO (ProcessID)
     fork Server { sServerSoc = socVar } w = do
       msoc <- readTVarIO socVar
@@ -97,16 +96,9 @@ main = do
           return (soc)
       let w' = w { wSocketFd = fdSocket soc }
       forkWorkerProcessWithArgs (w') ["id=" ++ show (wId w') ]
-
+    
     serverApp :: Application
     serverApp _ = return $ ResponseBuilder status200 [] $ fromString "hello"
-
--- Load settings via IO
-updateConfig :: Server -> IO (Maybe Config)
-updateConfig s = do
-  let workers = map (\i -> Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = "localhost" }) [1..(sWorkers s)]
-  updateWorkerSet (sResource s) workers
-  return (Just $ Config Warp.defaultSettings { Warp.settingsPort = fromIntegral (sPort s) } (sPort s) "localhost")
 
 -- Create a server socket with SockAddr
 listenOnAddr :: SockAddr -> IO Socket
@@ -123,10 +115,4 @@ listenOnAddr sockAddr = do
       return sock
     )
 
--- Send a signal
-sendSignal :: Signal -> ProcessID -> IO ()
-sendSignal sig cid = signalProcess sig cid `catch` ignoreException
-  where
-    ignoreException :: SomeException -> IO ()
-    ignoreException _ = return ()
 
