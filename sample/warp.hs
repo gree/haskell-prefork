@@ -3,10 +3,12 @@
 
 -- This is a simple web server based on Warp
 
+import Data.Maybe
 import Blaze.ByteString.Builder.Char.Utf8
 import Foreign.C.Types
 import Network.BSD
 import Network.Socket
+import Control.Monad
 import Control.Exception
 import Control.Concurrent.STM
 import Network.Wai
@@ -15,6 +17,7 @@ import Network.HTTP.Types
 import System.Posix
 import System.Prefork
 import System.Console.CmdArgs
+import GHC.Conc
 
 -- Application specific configuration
 data Config = Config {
@@ -27,10 +30,11 @@ data Worker = Worker {
   , wPort     :: Int
   , wSocketFd :: CInt
   , wHost     :: String
+  , wCap      :: Int
   } deriving (Show, Read)
 
 instance WorkerContext Worker where
-  rtsOptions _ = ["-N4"]
+  rtsOptions w = ["-N" ++ show (wCap w)]
 
 instance Ord Worker where
   compare a b = case (a, b) of
@@ -69,18 +73,26 @@ main = do
   resource <- makePreforkResource []
   mSoc <- newTVarIO Nothing
   let s = Server mSoc (port option) (workers option)
-  defaultMain (relaunchSettings resource (update s) (fork s)) $ \(Worker { wSocketFd = fd, wHost = _host }) -> do
+  defaultMain (relaunchSettings resource (update s) (fork s)) $ \(Worker { wId = i, wSocketFd = fd, wHost = _host }) -> do
     -- worker action
     soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
     mConfig <- update s resource
     case mConfig of
-      Just config -> Warp.runSettingsSocket (cWarpSettings config) soc $ serverApp
+      Just config -> do
+        v <- newTVarIO Nothing
+        _ <- forkOn i $ do
+          Warp.runSettingsSocket (cWarpSettings config) soc $ serverApp
+          atomically $ writeTVar v (Just ())
+        atomically $ do
+          x <- readTVar v
+          when (isNothing x) retry
+        return ()
       Nothing -> return ()
   where
     update :: Server -> PreforkResource Worker -> IO (Maybe Config)
     update s resource = do
-      updateWorkerSet resource $ flip map [1..(sWorkers s)] $ \i ->
-        Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = "localhost" }
+      updateWorkerSet resource $ flip map [0..(sWorkers s - 1)] $ \i ->
+        Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = "localhost", wCap = sWorkers s }
       updateConfig s
 
     updateConfig :: Server -> IO (Maybe Config)
