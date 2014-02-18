@@ -16,42 +16,50 @@ Execute the cabal install command and the library and example programs will be p
 How to use
 ----------
 
-1. Import System.Prefork in your Main module.
+Import System.Prefork in your Main module.
 
-    import System.Prefork
-    import System.Posix
-    import System.Exit (exitSuccess)
+```haskell
+import System.Prefork
+import System.Posix
+import System.Exit (exitSuccess)
+```
 
-2. Define data type used for server configuration.
+Define data type used for server configuration.
 
-    data ServerConfig = ServerConfig
-    
-3. Define workers as a data type.
+```haskell
+data ServerConfig = ServerConfig
+```
 
-    data Worker = Worker1 String deriving (Show, Read)
-    
-    instance WorkerContext Worker
+Define workers as a data type.
 
-4. call System.Prefork.defaultMain function with settings in your main function.
+```haskell
+data Worker = Worker1 String deriving (Show, Read)
+
+instance WorkerContext Worker
+```
+
+Call System.Prefork.defaultMain function with settings in your main function.
  
-    main :: IO ()
-    main = defaultMain defaultSettings {
-        psUpdateConfig = updateConfig
-      , psUpdateServer = updateServer
-      , psOnStart      = \_ -> do
-          pid <- getProcessID
-          putStrLn $ "Please send SIGHUP to " ++ show pid ++ " to relaunch a worker"
-      } $ \so -> case so of
-      Worker1 msg -> print msg >> exitSuccess
-    
-    updateConfig :: IO (Maybe ServerConfig)
-    updateConfig = do
-      return (Just ServerConfig)
-    
-    updateServer :: ServerConfig -> IO ([ProcessID])
-    updateServer ServerConfig = do
-      pid <- forkWorkerProcess (Worker1 "Hello. I'm a worker.")
-      return ([pid])
+```haskell
+main :: IO ()
+main = defaultMain defaultSettings {
+    psUpdateConfig = updateConfig
+  , psUpdateServer = updateServer
+  , psOnStart      = \_ -> do
+      pid <- getProcessID
+      putStrLn $ "Please send SIGHUP to " ++ show pid ++ " to relaunch a worker"
+  } $ \so -> case so of
+  Worker1 msg -> print msg >> exitSuccess
+
+updateConfig :: IO (Maybe ServerConfig)
+updateConfig = do
+  return (Just ServerConfig)
+
+updateServer :: ServerConfig -> IO ([ProcessID])
+updateServer ServerConfig = do
+  pid <- forkWorkerProcess (Worker1 "Hello. I'm a worker.")
+  return ([pid])
+```
 
 Examples
 --------
