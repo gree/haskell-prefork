@@ -87,6 +87,7 @@ Executable prefork-sample-warp
                  , unix
                  , prefork
                  , cmdargs
+                 , async
   Hs-source-dirs:  sample
   Main-is:         warp.hs
   Extensions:      DeriveDataTypeable

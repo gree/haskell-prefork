@@ -3,21 +3,19 @@
 
 -- This is a simple web server based on Warp
 
-import Data.Maybe
 import Blaze.ByteString.Builder.Char.Utf8
 import Foreign.C.Types
 import Network.BSD
 import Network.Socket
-import Control.Monad
 import Control.Exception
 import Control.Concurrent.STM
+import Control.Concurrent.Async
 import Network.Wai
 import qualified Network.Wai.Handler.Warp as Warp
 import Network.HTTP.Types
 import System.Posix
 import System.Prefork
 import System.Console.CmdArgs
-import GHC.Conc
 
 -- Application specific configuration
 data Config = Config {
@@ -79,14 +77,8 @@ main = do
     mConfig <- update s resource
     case mConfig of
       Just config -> do
-        v <- newTVarIO Nothing
-        _ <- forkOn i $ do
-          Warp.runSettingsSocket (cWarpSettings config) soc $ serverApp
-          atomically $ writeTVar v (Just ())
-        atomically $ do
-          x <- readTVar v
-          when (isNothing x) retry
-        return ()
+        a <- asyncOn i $ Warp.runSettingsSocket (cWarpSettings config) soc $ serverApp
+        wait a
       Nothing -> return ()
   where
     update :: Server -> PreforkResource Worker -> IO (Maybe Config)
@@ -113,7 +105,7 @@ main = do
 
 -- Web application
 serverApp :: Application
-serverApp _ = return $ ResponseBuilder status200 [] $ fromString "hello"
+serverApp _ = return $ responseBuilder status200 [] $ fromString "hello"
 
 -- Create a server socket with SockAddr
 listenOnAddr :: SockAddr -> IO Socket
