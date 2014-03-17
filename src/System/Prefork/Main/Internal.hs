@@ -116,9 +116,9 @@ cleanupChildren cids procs = do
   return (finished)
   where
     checkFinished (pid, x) = case x of
-      Just (Exited _exitCode) -> Just pid
-      Just (Terminated _signal) -> Just pid
-      Just (Stopped _signal) -> Nothing
+      Just (Exited {}) -> Just pid
+      Just (Terminated {}) -> Just pid
+      Just (Stopped {}) -> Nothing
       _ -> Nothing
 
 setupServer :: TChan ControlMessage -> IO ()
