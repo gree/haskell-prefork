@@ -28,14 +28,14 @@ Library
                    , System.Prefork.Settings
   -- other-modules:       
   hs-source-dirs:    src
-  build-depends:     base ==4.6.*
+  build-depends:     base            >= 4.6 && < 4.8
                    , stm 
                    , containers
                    , unix
                    , system-argv0
                    , system-filepath
                    , data-default
-                   , process
+                   , process         >= 1.1 && < 1.2
 
 Executable prefork-sample-simple
   if flag(sample)
