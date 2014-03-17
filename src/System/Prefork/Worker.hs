@@ -45,7 +45,7 @@ forkWorkerProcessWithArgs opt args = do
 
     extractProcessID :: ProcessHandle -> IO ProcessID
     extractProcessID h = withProcessHandle h $ \x -> case x of
-      OpenHandle pid -> return (x, pid)
+      OpenHandle pid -> return pid
       _ -> throwIO $ userError "Unable to retrieve child process ID."
 
 {- |
