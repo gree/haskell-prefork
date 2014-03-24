@@ -34,12 +34,12 @@ data Worker = Worker {
 instance WorkerContext Worker where
   rtsOptions w = ["-N" ++ show (wCap w)]
 
+instance Eq Worker where
+  (==) a b = compare a b == EQ
+
 instance Ord Worker where
   compare a b = case (a, b) of
     (Worker { wId = aid }, Worker { wId = bid }) -> compare aid bid
-
-instance Eq Worker where
-  (==) a b = compare a b == EQ
 
 -- Server states
 data Server = Server {
@@ -68,7 +68,7 @@ cmdLineOptions = Warp {
 main :: IO ()
 main = do
   option <- cmdArgs cmdLineOptions
-  resource <- makePreforkResource []
+  resource <- emptyPreforkResource
   mSoc <- newTVarIO Nothing
   let s = Server mSoc (port option) (workers option)
   defaultMain (relaunchSettings resource (update s) (fork s)) $ \(Worker { wId = i, wSocketFd = fd, wHost = _host }) -> do

@@ -13,6 +13,10 @@ import qualified Data.Map as M
 import Data.List
 import Control.Monad
 
+{- | default settings for defaultMain
+     
+     This just sends signals to child processes.
+-}
 defaultSettings :: PreforkSettings sc
 defaultSettings = PreforkSettings {
     psOnTerminate      = \_config -> mapM_ (sendSignal sigTERM)
@@ -26,7 +30,22 @@ defaultSettings = PreforkSettings {
   , psUpdateConfig     = return (Nothing)
   }
 
-relaunchSettings :: (Ord w, Eq w) => PreforkResource w -> (PreforkResource w -> IO (Maybe sc)) -> (w -> IO (ProcessID)) -> PreforkSettings sc
+{- | relaunch settings
+     
+     This requires 'PreforkResource' that describes resouces used by workers.
+     'relaunchSettings' takes two functions.
+     The one is 'update' and the other is 'fork'.
+     'update' function is used for reading server configuration (usually from a file)
+     and update 'sc' type.
+     'fork' function is used for launching a new worker with a worker context.
+     The worker context should be the instance of 'Eq' and 'Ord' classes because it 
+     will be a element type of 'Set'.
+-}
+relaunchSettings :: (Ord w, Eq w)
+                    => PreforkResource w
+                    -> (PreforkResource w -> IO (Maybe sc))
+                    -> (w -> IO (ProcessID))
+                    -> PreforkSettings sc
 relaunchSettings resource updateAction forkAction = defaultSettings {
       psUpdateConfig = updateAction resource
     , psUpdateServer = updateWorkers resource forkAction

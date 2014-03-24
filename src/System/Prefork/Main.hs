@@ -4,6 +4,7 @@
 
 module System.Prefork.Main (
     defaultMain
+  , runSettings
   ) where
 
 import System.Environment (lookupEnv)
@@ -15,7 +16,10 @@ import System.Prefork.Worker
 import System.Prefork.Main.Internal
 
 defaultMain :: (WorkerContext w) => PreforkSettings sc -> (w -> IO ()) -> IO ()
-defaultMain settings workerAction = do
+defaultMain = runSettings
+
+runSettings :: (WorkerContext w) => PreforkSettings sc -> (w -> IO ()) -> IO ()
+runSettings settings workerAction = do
   mPrefork <- lookupEnv preforkEnvKey
   case mPrefork of
     Just _ -> workerMain workerAction
