@@ -83,6 +83,7 @@ relaunchSettings resource updateAction forkAction = defaultSettings {
       atomically $ modifyTVar' procs $ M.union newPids
       return (M.keys newPids)
 
+-- private
 sendSignal :: Signal -> ProcessID -> IO ()
 sendSignal sig cid = signalProcess sig cid `catch` ignore
   where

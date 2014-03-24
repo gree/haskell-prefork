@@ -37,11 +37,10 @@ instance WorkerContext Worker where
   rtsOptions w = ["-N" ++ show (wCap w)]
 
 instance Eq Worker where
-  (==) a b = compare a b == EQ
+  (==) a b = wId a == wId b
 
 instance Ord Worker where
-  compare a b = case (a, b) of
-    (Worker { wId = aid }, Worker { wId = bid }) -> compare aid bid
+  compare a b = compare (wId a) (wId b)
 
 -- Server states
 data Server = Server {
@@ -76,7 +75,7 @@ main = do
   defaultMain (relaunchSettings resource (update s) (fork s)) $ \(Worker { wId = i, wSocketFd = fd, wHost = _host }) -> do
     -- worker action
     soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
-    mConfig <- update s resource
+    mConfig <- updateConfig s
     case mConfig of
       Just config -> do
         a <- asyncOn i $ Warp.runSettingsSocket (cWarpSettings config) soc $ serverApp
@@ -85,12 +84,10 @@ main = do
   where
     update :: Server -> PreforkResource Worker -> IO (Maybe Config)
     update s resource = do
+      mConfig <- updateConfig s
       updateWorkerSet resource $ flip map [0..(sWorkers s - 1)] $ \i ->
         Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = "localhost", wCap = sWorkers s }
-      updateConfig s
-
-    updateConfig :: Server -> IO (Maybe Config)
-    updateConfig s = return (Just $ Config Warp.defaultSettings { Warp.settingsPort = fromIntegral (sPort s) })
+      return (mConfig)
 
     fork :: Server -> Worker -> IO (ProcessID)
     fork Server { sServerSoc = socVar } w = do
@@ -104,6 +101,10 @@ main = do
           return (soc)
       let w' = w { wSocketFd = fdSocket soc }
       forkWorkerProcessWithArgs (w') ["id=" ++ show (wId w') ]
+
+-- Load config
+updateConfig :: Server -> IO (Maybe Config)
+updateConfig s = return (Just $ Config Warp.defaultSettings { Warp.settingsPort = fromIntegral (sPort s) })
 
 -- Web application
 serverApp :: Application

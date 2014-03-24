@@ -1,9 +1,6 @@
 -- Copyright: (c) 2013 Gree, Inc.
 -- License: MIT-style
 
-{- | This is a library for servers based on worker process model.
--}
-
 module System.Prefork.Main (
     defaultMain
   , runSettings
