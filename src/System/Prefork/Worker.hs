@@ -36,7 +36,6 @@ forkWorkerProcessWithArgs :: (WorkerContext a)
                              -> IO ProcessID -- ^ a process id of a created worker
 forkWorkerProcessWithArgs opt args = do
   exe <- liftM encodeString getArgv0
-  mPrefork <- lookupEnv preforkEnvKey
   (Just hIn, Just hOut, _, ph) <- createProcess $ (proc exe options) { std_in = CreatePipe, std_out = CreatePipe }
   forkIO $ hPutStr stdout =<< hGetContents hOut
   hPutStrLn hIn $ encodeToString opt

@@ -3,8 +3,7 @@
 
 name:                prefork
 version:             0.0.6
-synopsis:            Prefork library
-description:         A library for building a prefork-style server quickly
+synopsis:            A library for building a prefork-style server quickly
 license:             MIT
 license-file:        LICENSE
 author:              Kiyoshi Ikehara, Benjamin Sruma
@@ -13,6 +12,8 @@ copyright:           (c) 2013 GREE, Inc.
 category:            System
 build-type:          Simple
 cabal-version:       >=1.8
+description:         Prefork is a library for building a prefork-style server quickly.
+                     
 
 Flag sample
   Description: Build sample programs

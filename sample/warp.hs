@@ -72,7 +72,7 @@ main = do
   resource <- emptyPreforkResource
   mSoc <- newTVarIO Nothing
   let s = Server mSoc (port option) (workers option)
-  defaultMain (relaunchSettings resource (update s) (fork s)) $ \(Worker { wId = i, wSocketFd = fd, wHost = _host }) -> do
+  defaultMain (relaunchSettings resource (update s) (fork s)) $ \(Worker { wId = i, wSocketFd = fd }) -> do
     -- worker action
     soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
     mConfig <- updateConfig s

@@ -116,11 +116,13 @@ you can use 'updateWorkerSet' function here.
     update s resource = do
       mConfig <- updateConfig s
       updateWorkerSet resource $ flip map [0..(sWorkers s - 1)] $ \i ->
-        Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = "localhost", wCap = sWorkers s }
+        Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = \"localhost\", wCap = sWorkers s }
       return (mConfig)
 @
 
 'fork' function simply creates a worker process with the given parameters.
+You should call 'forkWorkerProcess' or 'forkWorkerProcessWithArgs' in this function to invoke a child process as a worker.
+In this case, the arguments of 'forkWorkerProcessWithArgs' are just for displaying id number and not used.
 
 @
     fork :: Server -> Worker -> IO (ProcessID)
@@ -134,7 +136,7 @@ you can use 'updateWorkerSet' function here.
           atomically $ writeTVar socVar (Just soc)
           return (soc)
       let w' = w { wSocketFd = fdSocket soc }
-      forkWorkerProcessWithArgs (w') ["id=" ++ show (wId w') ]
+      forkWorkerProcessWithArgs (w') [\"id=\" ++ show (wId w') ]
 @
 
 -}
