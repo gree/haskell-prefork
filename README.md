@@ -9,7 +9,8 @@ How to install
 
 Execute the cabal install command and the library and example programs will be placed into your .cabal directory.
 
-    > cd haskell-jobqueue/
+    > git clone .../haskell-prefork.git
+    > cd haskell-prefork/
     > cabal install --only-dependencies --extra-include-dirs=/usr/local/include/zookeeper # if you use brew on Mac OSX
     > cabal install --fsample
 
