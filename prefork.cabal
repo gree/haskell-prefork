@@ -9,7 +9,7 @@ license:             MIT
 license-file:        LICENSE
 author:              Kiyoshi Ikehara, Benjamin Sruma
 maintainer:          kiyoshi.ikehara@gree.net
-copyright:           (c) 2013 Gree, Inc.
+copyright:           (c) 2013 GREE, Inc.
 category:            System
 build-type:          Simple
 cabal-version:       >=1.8

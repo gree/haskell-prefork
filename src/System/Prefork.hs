@@ -1,6 +1,6 @@
 {- |
   Module      : System.Prefork
-  Copyright   : (c) 2013 Gree, Inc.
+  Copyright   : (c) 2013 GREE, Inc.
   License     : MIT-style
   
   Maintainer  : Kiyoshi Ikehara <kiyoshi.ikehara@gree.net>
