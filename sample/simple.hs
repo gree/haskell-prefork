@@ -1,3 +1,5 @@
+-- Copyright: (c) 2013 Gree, Inc.
+-- License: MIT-style
 
 import System.Prefork
 import System.Posix

@@ -4,12 +4,12 @@
 name:                prefork
 version:             0.0.5
 synopsis:            Prefork library
--- description:         
-license:             OtherLicense
+description:         A library for building a prefork-style server quickly
+license:             MIT
 license-file:        LICENSE
 author:              Kiyoshi Ikehara, Benjamin Sruma
 maintainer:          kiyoshi.ikehara@gree.net
--- copyright:           
+copyright:           (c) 2013 Gree, Inc.
 category:            System
 build-type:          Simple
 cabal-version:       >=1.8
@@ -29,14 +29,13 @@ Library
   -- other-modules:       
   hs-source-dirs:    src
   build-depends:     base            >= 4.6 && < 4.8
-                   , stm 
+                   , stm             >= 2.4
                    , containers
                    , unix
                    , system-argv0
                    , system-filepath
                    , data-default
                    , process         >= 1.2 && < 1.3
- -- >= 1.1 && < 1.2
 
 Executable prefork-sample-simple
   if flag(sample)
