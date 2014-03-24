@@ -2,8 +2,7 @@
 -- License: MIT-style
 
 module System.Prefork.Main.Internal (
-    compatMain
-  , masterMain
+    masterMain
   , workerMain
   ) where
 
@@ -33,13 +32,6 @@ data Prefork sc = Prefork {
   , pSettings     :: !(PreforkSettings sc)
   }
 
-compatMain :: (WorkerContext w) => PreforkSettings sc -> (w -> IO ()) -> IO ()
-compatMain settings workerAction = do
-  args <- getArgs
-  case (listToMaybe args) of 
-    Just x | x == "server" -> workerMain workerAction
-    _ -> masterMain settings
-
 workerMain :: (WorkerContext so) => (so -> IO ()) -> IO ()
 workerMain act = do
   rawOpt <- getLine
@@ -48,10 +40,10 @@ workerMain act = do
 
 masterMain :: PreforkSettings sc -> IO ()
 masterMain settings = do
-  ctrlChan  <- newTChanIO
-  procs     <- newTVarIO []
-  mConfig   <- psUpdateConfig settings
-  soptVar   <- newTVarIO mConfig
+  ctrlChan <- newTChanIO
+  procs    <- newTVarIO []
+  mConfig  <- psUpdateConfig settings
+  soptVar  <- newTVarIO mConfig
   atomically $ writeTChan ctrlChan HungupCM  
   setupServer ctrlChan
   (psOnStart settings) mConfig

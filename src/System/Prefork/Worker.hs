@@ -28,14 +28,16 @@ import System.Prefork.Class
 preforkEnvKey :: String
 preforkEnvKey = "PREFORK"
 
-{- |
+{- | create a new worker with arguments
 -}
-forkWorkerProcessWithArgs :: (WorkerContext so) => so -> [String] -> IO ProcessID
+forkWorkerProcessWithArgs :: (WorkerContext a)
+                             => a            -- ^ a worker context
+                             -> [String]     -- ^ command line arguments
+                             -> IO ProcessID -- ^ a process id of a created worker
 forkWorkerProcessWithArgs opt args = do
   exe <- liftM encodeString getArgv0
   mPrefork <- lookupEnv preforkEnvKey
-  let heads = maybe ["server"] (const []) mPrefork -- for compatiblity (will be removed in the next release)
-  (Just hIn, Just hOut, _, ph) <- createProcess $ (proc exe (heads ++ options)) { std_in = CreatePipe, std_out = CreatePipe }
+  (Just hIn, Just hOut, _, ph) <- createProcess $ (proc exe options) { std_in = CreatePipe, std_out = CreatePipe }
   forkIO $ hPutStr stdout =<< hGetContents hOut
   hPutStrLn hIn $ encodeToString opt
   extractProcessID ph
@@ -50,8 +52,10 @@ forkWorkerProcessWithArgs opt args = do
       OpenHandle pid -> return pid
       _ -> throwIO $ userError "Unable to retrieve child process ID."
 
-{- |
+{- | create a new worker
 -}
-forkWorkerProcess :: (WorkerContext so) => so -> IO ProcessID
+forkWorkerProcess :: (WorkerContext a)
+                     => a            -- ^ a worker context
+                     -> IO ProcessID -- ^ a process id of a created worker
 forkWorkerProcess opt = forkWorkerProcessWithArgs opt []
 
