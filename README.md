@@ -32,7 +32,7 @@ data Config = Config {
 ```
 
 Define workers as a data type that belongs to 'WorkerContext' class.
-In this case, the field 'wId' is a ID number for idenfitying single worker process and other fields are
+In this case, the field 'wId' is a ID number for identifying a single worker process and other fields are
 parameters for a worker process.
 
 ```haskell
@@ -58,8 +58,8 @@ instance Ord Worker where
   compare a b = compare (wId a) (wId b)
 ```
 
-Call 'defaultMain' with 'update' and 'fork' functions in your 'main' function.
-'relaunchSettings' is a function that creates comvenient settings for a typical prefork server.
+In your 'main' function, call 'defaultMain' with 'update' and 'fork' functions.
+'relaunchSettings' is a function that creates convenient settings for a typical prefork server.
  
 ```haskell
 main :: IO ()
@@ -81,9 +81,8 @@ main = do
     ...
 ```
 
-'update' function is used for modifying the worker process configuration.
-If you want to increase or decrease the number of workers, change worker parameters, and etc,
-you can use 'updateWorkerSet' function here.
+The 'update' function is used to modify the worker process configuration.
+You can configure the number of workers and change other worker parameters by using the 'updateWorkerSet' function shown below.
 
 ```haskell
     update :: Server -> PreforkResource Worker -> IO (Maybe Config)
@@ -94,9 +93,9 @@ you can use 'updateWorkerSet' function here.
       return (mConfig)
 ```
 
-'fork' function simply creates a worker process with the given parameters.
+The 'fork' function creates a worker process with the given parameters.
 You should call 'forkWorkerProcess' or 'forkWorkerProcessWithArgs' in this function to invoke a child process as a worker.
-In this case, the arguments of 'forkWorkerProcessWithArgs' are just for displaying id number and not used.
+In the example below, 'forkWorkerProcessWithArgs' is used to create child processes that outputs its id number.
 
 ```haskell
     fork :: Server -> Worker -> IO (ProcessID)
@@ -120,7 +119,7 @@ Examples
 
 ### Simple
 
-prefork-sample-simple is a very simple example for showing the basic feature of this library.
+prefork-sample-simple is a very simple example that showcases the basic features of this library.
 
     > prefork-sample-simple
     Please send SIGHUP to 12345 to relaunch a worker <- parent process
@@ -130,7 +129,7 @@ Open another terminal and send SIGHUP to the child process.
 
     > kill -HUP 12345
 
-Then, you will see the message again.
+The message will be output again.
 
     Please send SIGHUP to 12345 to relaunch a worker <- parent process
     "Hello. I'm a worker."                           <- child process
@@ -138,11 +137,11 @@ Then, you will see the message again.
 
 ### Warp
 
-prefork-sample-warp is a more complex and practical example for showing relaunch feature.
+prefork-sample-warp is a slightly more complex and practical example that showcases the relaunch feature.
 
     > prefork-sample-warp -p 3000 -w 5
 
-Open another terminal and execute ps command to see the parent and child processes.
+Open another terminal and execute the ps command to see the parent and child processes.
 
     > ps ax
     ...
@@ -154,7 +153,7 @@ Open another terminal and execute ps command to see the parent and child process
     17312 s017  S+     0:00.04 .cabal-sandbox/bin/prefork-sample-warp id=4 +RTS -N5 -RTS
     ...
 
-And, kill one of them.
+Kill one of them.
 
     > kill 17310
     > ps ax
@@ -167,5 +166,5 @@ And, kill one of them.
     18697 s017  S+     0:00.03 .cabal-sandbox/bin/prefork-sample-warp id=2 +RTS -N5 -RTS
     ...
 
-The process with id number 2 has been relaunched by the parent process.
+The process with id number 2 would have been relaunched by the parent process.
 
