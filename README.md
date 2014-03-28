@@ -21,46 +21,99 @@ Import System.Prefork in your Main module.
 
 ```haskell
 import System.Prefork
-import System.Posix
-import System.Exit (exitSuccess)
 ```
 
 Define data type used for server configuration.
 
 ```haskell
-data ServerConfig = ServerConfig
+data Config = Config {
+    cWarpSettings :: Warp.Settings
+  }
 ```
 
-Define workers as a data type.
+Define workers as a data type that belongs to 'WorkerContext' class.
+In this case, the field 'wId' is a ID number for idenfitying single worker process and other fields are
+parameters for a worker process.
 
 ```haskell
-data Worker = Worker1 String deriving (Show, Read)
+data Worker = Worker {
+    wId       :: Int
+  , wPort     :: Int
+  , wSocketFd :: CInt
+  , wHost     :: String
+  , wCap      :: Int
+  } deriving (Show, Read)
 
-instance WorkerContext Worker
+instance WorkerContext Worker where
+  rtsOptions w = ["-N" ++ show (wCap w)]
 ```
 
-Call System.Prefork.defaultMain function with settings in your main function.
+Define Eq and Ord instances for Worker. These are required for using 'relaunchSettings'.
+
+```haskell
+instance Eq Worker where
+  (==) a b = wId a == wId b
+
+instance Ord Worker where
+  compare a b = compare (wId a) (wId b)
+```
+
+Call 'defaultMain' with 'update' and 'fork' functions in your 'main' function.
+'relaunchSettings' is a function that creates comvenient settings for a typical prefork server.
  
 ```haskell
 main :: IO ()
-main = defaultMain defaultSettings {
-    psUpdateConfig = updateConfig
-  , psUpdateServer = updateServer
-  , psOnStart      = \_ -> do
-      pid <- getProcessID
-      putStrLn $ "Please send SIGHUP to " ++ show pid ++ " to relaunch a worker"
-  } $ \so -> case so of
-  Worker1 msg -> print msg >> exitSuccess
-
-updateConfig :: IO (Maybe ServerConfig)
-updateConfig = do
-  return (Just ServerConfig)
-
-updateServer :: ServerConfig -> IO ([ProcessID])
-updateServer ServerConfig = do
-  pid <- forkWorkerProcess (Worker1 "Hello. I'm a worker.")
-  return ([pid])
+main = do
+  option <- cmdArgs cmdLineOptions
+  resource <- emptyPreforkResource
+  mSoc <- newTVarIO Nothing
+  let s = Server mSoc (port option) (workers option)
+  defaultMain (relaunchSettings resource (update s) (fork s)) $ \(Worker { wId = i, wSocketFd = fd }) -> do
+    -- worker action
+    soc <- mkSocket fd AF_INET Stream defaultProtocol Listening
+    mConfig <- updateConfig s
+    case mConfig of
+      Just config -> do
+        a <- asyncOn i $ Warp.runSettingsSocket (cWarpSettings config) soc $ serverApp
+        wait a
+      Nothing -> return ()
+  where
+    ...
 ```
+
+'update' function is used for modifying the worker process configuration.
+If you want to increase or decrease the number of workers, change worker parameters, and etc,
+you can use 'updateWorkerSet' function here.
+
+```haskell
+    update :: Server -> PreforkResource Worker -> IO (Maybe Config)
+    update s resource = do
+      mConfig <- updateConfig s
+      updateWorkerSet resource $ flip map [0..(sWorkers s - 1)] $ \i ->
+        Worker { wId = i, wPort = (sPort s), wSocketFd = -1, wHost = \"localhost\", wCap = sWorkers s }
+      return (mConfig)
+```
+
+'fork' function simply creates a worker process with the given parameters.
+You should call 'forkWorkerProcess' or 'forkWorkerProcessWithArgs' in this function to invoke a child process as a worker.
+In this case, the arguments of 'forkWorkerProcessWithArgs' are just for displaying id number and not used.
+
+```haskell
+    fork :: Server -> Worker -> IO (ProcessID)
+    fork Server { sServerSoc = socVar } w = do
+      msoc <- readTVarIO socVar
+      soc <- case msoc of
+        Just soc -> return (soc)
+        Nothing -> do
+          hentry <- getHostByName (wHost w)
+          soc <- listenOnAddr (SockAddrInet (fromIntegral (wPort w)) (head $ hostAddresses hentry))
+          atomically $ writeTVar socVar (Just soc)
+          return (soc)
+      let w' = w { wSocketFd = fdSocket soc }
+      forkWorkerProcessWithArgs (w') [\"id=\" ++ show (wId w') ]
+```
+
+Please see warp.hs in sample/ for further information.
 
 Examples
 --------
