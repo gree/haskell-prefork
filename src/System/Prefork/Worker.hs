@@ -39,6 +39,7 @@ forkWorkerProcessWithArgs opt args = do
   (Just hIn, Just hOut, _, ph) <- createProcess $ (proc exe options) { std_in = CreatePipe, std_out = CreatePipe }
   forkIO $ hPutStr stdout =<< hGetContents hOut
   hPutStrLn hIn $ encodeToString opt
+  hFlush hIn
   extractProcessID ph
   where
     options :: [String]
