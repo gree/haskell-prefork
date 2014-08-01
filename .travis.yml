@@ -18,6 +18,9 @@ before_install:
 
 install:
  - cabal update
+ - cabal sandbox init
+ - cabal install hpc-coveralls --bindir=$HOME/.cabal/bin/
+ - cabal sandbox delete
  - cabal install happy
  - cabal install --only-dependencies --enable-tests --constraint 'process-conduit < 1.2.0' --constraint 'attoparsec-conduit < 1.1.0'
 
@@ -36,3 +39,18 @@ script:
       echo "expected '$SRC_TGZ' not found";
       exit 1;
    fi
+
+# We con not get test coverage data using `cabal test`
+# so execute binary of test suites directly
+after_script:
+ - cd ..
+ - cabal clean
+ - cabal configure --enable-tests -v2 --enable-library-coverage # -v2 provides useful information for debugging
+ - cabal build
+ - ./dist/build/test-prefork/test-prefork
+ - ./dist/build/test-prefork-server/test-prefork-server
+ - mkdir -p dist/hpc/tix/test-prefork
+ - mkdir -p dist/hpc/tix/test-prefork-server
+ - mv test-prefork.tix dist/hpc/tix/test-prefork/
+ - mv test-prefork-server.tix dist/hpc/tix/test-prefork-server/
+ - hpc-coveralls --exclude-dir=test test-prefork test-prefork-server
