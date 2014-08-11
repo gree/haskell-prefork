@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                prefork
-version:             0.0.8
+version:             0.0.9
 synopsis:            A library for building a prefork-style server quickly
 license:             MIT
 license-file:        LICENSE
